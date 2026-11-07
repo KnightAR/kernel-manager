@@ -1,0 +1,48 @@
+From 0d2bf025e8c909a671d72b066179e26305c0f276 Mon Sep 17 00:00:00 2001
+From: Sam James <sam@gentoo.org>
+Date: Tue, 7 Nov 2023 20:55:00 +0000
+Subject: [PATCH 13/25] objtool: Fix calloc call for new -Walloc-size
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+GCC 14 introduces a new -Walloc-size included in -Wextra which errors out
+like:
+```
+check.c: In function ‘cfi_alloc’:
+check.c:294:33: error: allocation of insufficient size ‘1’ for type ‘struct cfi_state’ with size ‘320’ [-Werror=alloc-size]
+  294 |         struct cfi_state *cfi = calloc(sizeof(struct cfi_state), 1);
+      |                                 ^~~~~~
+```
+
+The calloc prototype is:
+```
+void *calloc(size_t nmemb, size_t size);
+```
+
+So, just swap the number of members and size arguments to match the prototype, as
+we're initialising 1 struct of size `sizeof(struct ...)`. GCC then sees we're not
+doing anything wrong.
+
+Signed-off-by: Sam James <sam@gentoo.org>
+Signed-off-by: Peter Zijlstra (Intel) <peterz@infradead.org>
+Acked-by: Josh Poimboeuf <jpoimboe@kernel.org>
+Link: https://lore.kernel.org/r/20231107205504.1470006-1-sam@gentoo.org
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ tools/objtool/check.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/objtool/check.c b/tools/objtool/check.c
+index 2c7b09c8415f..7dcde0f92d58 100644
+--- a/tools/objtool/check.c
++++ b/tools/objtool/check.c
+@@ -291,7 +291,7 @@ static void init_insn_state(struct objtool_file *file, struct insn_state *state,
+ 
+ static struct cfi_state *cfi_alloc(void)
+ {
+-	struct cfi_state *cfi = calloc(sizeof(struct cfi_state), 1);
++	struct cfi_state *cfi = calloc(1, sizeof(struct cfi_state));
+ 	if (!cfi) {
+ 		WARN("calloc failed");
+ 		exit(1);

@@ -1,0 +1,135 @@
+From 90499fc5e2c3911cd04dc0cc60af7daada25b7be Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Thu, 29 Feb 2024 12:50:11 +0200
+Subject: [PATCH] gitlab-ci: Make use of Container Registry
+
+Setup CI to create a Debian based docker image for building the kernel
+and push it to project registry in order to speedup the pipeline
+execution on subsequent runs.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml       | 62 ++++++++++++++++++++++++++++++++++++--------
+ ci/debian/Dockerfile | 21 +++++++++++++++
+ 2 files changed, 72 insertions(+), 11 deletions(-)
+ create mode 100644 ci/debian/Dockerfile
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 350037c9820d..32c4fc99c99c 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -7,24 +7,65 @@ variables:
+   ROOTFS_IMAGE_URL: "https://gitlab.steamos.cloud/api/v4/projects/kernel-research%2Frootfs/jobs/129183/artifacts"
+   GIT_AUTHOR_NAME: "Gitlab-ci"
+   GIT_AUTHOR_EMAIL: "gitlab@gitlab.steamos.cloud"
+-  TAG: CI_${CI_PIPELINE_ID}_${CI_COMMIT_SHORT_SHA}
+ 
+-before_script:
+-  - apt-get update -y
++workflow:
++  rules:
++    - if: $CI_COMMIT_TAG
++    - if: $CI_COMMIT_BRANCH
+ 
+ stages:
+-  - build
++  - docker-image
++  - kernel-build
+ 
+-kernel build:
+-  stage: build
+-  image: debian:buster-slim
++.build-docker-image:
++  image:
++    name: gcr.io/kaniko-project/executor:v1.21.0-debug
++    entrypoint: [""]
++  stage: docker-image
++  only:
++    - branches
++  script:
++    - mkdir -p /kaniko/.docker/
++    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
++    - >
++      /kaniko/executor
++      --context $CI_PROJECT_DIR/ci/$IMAGE_DISTRO_BASE
++      --dockerfile $CI_PROJECT_DIR/ci/$IMAGE_DISTRO_BASE/Dockerfile
++      --destination $CI_REGISTRY_IMAGE/$IMAGE_NAME:$IMAGE_TAG
++      --single-snapshot
++      --build-arg DISTRO_BASE=$IMAGE_DISTRO_BASE
++      --build-arg DISTRO_TAG=$IMAGE_DISTRO_TAG
++
++.use-docker-image:
++  image:
++    name: $CI_REGISTRY_IMAGE/$IMAGE_NAME:$IMAGE_TAG
++    entrypoint: [""]
++
++.prep-debian-kernel-builder:
++  variables:
++    IMAGE_DISTRO_BASE: debian
++    IMAGE_DISTRO_TAG: buster-slim
++    IMAGE_NAME: debian-kernel-builder
++    IMAGE_TAG: "2024-02-29"
+   tags:
+     - autoscaled
+ 
+-  before_script:
+-    - apt-get update -y
+-    - apt-get install -y rsync git build-essential bc kmod cpio flex libncurses5-dev bison libssl-dev libelf-dev openssh-client curl qemu-system* unzip python3 zstd
++build-debian-kernel-builder:
++  extends:
++    - .build-docker-image
++    - .prep-debian-kernel-builder
+ 
++.use-debian-kernel-builder:
++  extends:
++    - .use-docker-image
++    - .prep-debian-kernel-builder
++  needs:
++    - build-debian-kernel-builder
++  stage: kernel-build
++
++build-kernel-test-qemu:
++  extends:
++    - .use-debian-kernel-builder
+   script:
+     # Prepare the firmware files to be included in the kernel image
+     - git clone --depth=1 ${LINUX_FIRMWARE_URL} ${LINUX_FIRMWARE_DL_DIR}
+@@ -58,7 +99,6 @@ kernel build:
+     # Notify
+     - test -f "fail.txt" && exit 1
+     - echo "All tests passed."
+-
+   artifacts:
+     expire_in: 1 week
+     when: always
+diff --git a/ci/debian/Dockerfile b/ci/debian/Dockerfile
+new file mode 100644
+index 000000000000..194e6141f4e6
+--- /dev/null
++++ b/ci/debian/Dockerfile
+@@ -0,0 +1,21 @@
++ARG DISTRO_BASE=debian
++ARG DISTRO_TAG=bookworm-slim
++
++FROM $DISTRO_BASE:$DISTRO_TAG
++
++ENV LANG=C.UTF-8
++ENV LC_ALL C.UTF-8
++
++ENV DEBIAN_FRONTEND=noninteractive
++
++RUN apt-get update && \
++    apt-get install -y --no-install-recommends \
++        bc binutils-aarch64-linux-gnu bison \
++        ca-certificates \
++        cpio curl dwarves flex \
++        gcc gcc-aarch64-linux-gnu \
++        git gettext kmod \
++        libelf-dev libncurses-dev libssl-dev \
++        make pkg-config python3 qemu-system-x86 \
++        rsync unzip xz-utils zstd && \
++    rm -rf /var/lib/apt/lists/*
+-- 
+2.55.0
+

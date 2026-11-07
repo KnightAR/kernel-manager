@@ -1,0 +1,51 @@
+From b25bfe2ba4a6ec057bdb4bd5deed3d4868d67d7d Mon Sep 17 00:00:00 2001
+From: Natalie Vock <nat@pixelcluster.dev>
+Date: Mon, 6 Jul 2026 11:31:41 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/ttm: grab BO reference before locking it
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Previously we always grabbed the BO reference after taking the lock, but
+that isn't necessary any more.
+
+So avoid doing that and cleanup the handling here.
+
+Signed-off-by: Christian König <christian.koenig@amd.com>
+Signed-off-by: Natalie Vock <nat@pixelcluster.dev>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/ttm/ttm_bo_util.c | 15 +++++++++------
+ 1 file changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/gpu/drm/ttm/ttm_bo_util.c b/drivers/gpu/drm/ttm/ttm_bo_util.c
+index 29f068944a97..a53b25e8c296 100644
+--- a/drivers/gpu/drm/ttm/ttm_bo_util.c
++++ b/drivers/gpu/drm/ttm/ttm_bo_util.c
+@@ -1010,14 +1010,17 @@ __ttm_bo_lru_cursor_next(struct ttm_bo_lru_cursor *curs)
+ 			break;
+ 
+ 		bo = res->bo;
+-		if (ttm_lru_walk_trylock(curs, bo))
+-			bo_locked = true;
+-		else if (!arg->ticket || arg->ctx->no_wait_gpu || arg->trylock_only)
++		if (!ttm_bo_get_unless_zero(bo))
+ 			continue;
+ 
+-		if (!ttm_bo_get_unless_zero(bo)) {
+-			if (curs->needs_unlock)
+-				dma_resv_unlock(bo->base.resv);
++		if (ttm_lru_walk_trylock(curs, bo)) {
++			bo_locked = true;
++
++		} else if (!arg->ticket || arg->ctx->no_wait_gpu ||
++			   arg->trylock_only) {
++			spin_unlock(lru_lock);
++			ttm_bo_put(bo);
++			spin_lock(lru_lock);
+ 			continue;
+ 		}
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,8 @@
+{
+  "url": "https://steamdeck-packages.steamos.cloud/archlinux-mirror/sources/jupiter-main/linux-neptune-72-7.2.0.valve1-1.src.tar.gz",
+  "sha256": "cccf59b208cb97d2090226f83af6f609438be2ddabc2598eb0de6415c2c24792",
+  "base": "8d3ae59288f1e7d58d76558a6ee96d533bc5019f",
+  "tip": "d39b4282853d0af58cf47fcde20ac6ff126a3f8a",
+  "tag": "7.2.0-valve1",
+  "commits": 455
+}

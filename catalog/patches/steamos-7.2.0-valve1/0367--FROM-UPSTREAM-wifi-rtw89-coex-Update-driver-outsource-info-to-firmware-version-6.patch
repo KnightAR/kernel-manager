@@ -1,0 +1,324 @@
+From 05fd68e9222b633b2f566438709b7201e3f35559 Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Sun, 12 Jul 2026 11:04:58 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Update driver outsource
+ info to firmware version 6
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+In order to make dual MAC Wi-Fi performance more stable, and take effect
+in time, offload more register/ hardware control to firmware.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260712030506.43438-4-pkshih@realtek.com
+(cherry picked from commit 404edeea3b182d08ccdcdba1a1c43ae4ed7f4f0f)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/coex.c |  13 ++-
+ drivers/net/wireless/realtek/rtw89/core.h |  89 +++++++++++++++++--
+ drivers/net/wireless/realtek/rtw89/fw.c   | 101 +++++++++++++++++++++-
+ drivers/net/wireless/realtek/rtw89/fw.h   |   8 +-
+ 4 files changed, 199 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/coex.c b/drivers/net/wireless/realtek/rtw89/coex.c
+index 72586179ec2c..78360e73d959 100644
+--- a/drivers/net/wireless/realtek/rtw89/coex.c
++++ b/drivers/net/wireless/realtek/rtw89/coex.c
+@@ -2923,7 +2923,12 @@ static void _fw_set_drv_info(struct rtw89_dev *rtwdev, u8 index)
+ 		else
+ 			return;
+ 
+-		rtw89_fw_h2c_cxdrv_osi_info(rtwdev, index);
++		if (ver->fcxosi == 1)
++			rtw89_fw_h2c_cxdrv_osi_info(rtwdev, index);
++		else if (ver->fcxosi == 6)
++			rtw89_fw_h2c_cxdrv_osi_info_v6(rtwdev, index);
++		else
++			return;
+ 		break;
+ 	default:
+ 		break;
+@@ -3090,7 +3095,11 @@ static void _set_gnt_v1(struct rtw89_dev *rtwdev, u8 phy_map,
+ 	}
+ 
+ 	memcpy(osi->gnt_set, dm->gnt.band, sizeof(osi->gnt_set));
+-	memcpy(osi->wlact_set, dm->gnt.bt, sizeof(osi->wlact_set));
++
++	for (i = 0; i < BTC_ALL_BT; i++) {
++		osi->wlact_set[i].wlan_act_en = dm->gnt.bt[i].wlan_act_en;
++		osi->wlact_set[i].wlan_act = dm->gnt.bt[i].wlan_act;
++	}
+ 
+ 	/* GBT source should be GBT_S1 in 1+1 (HWB0:5G + HWB1:2G) case */
+ 	if (osi->rf_band[BTC_RF_S0] == 1 &&
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index 05281f1e2295..d267a445cc79 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -1322,6 +1322,17 @@ struct rtw89_mac_ax_gnt {
+ 	u8 gnt_wl;
+ } __packed;
+ 
++struct rtw89_btc_gnt_ctrl {
++	u8 gnt_zb_sw_en;
++	u8 gnt_zb;
++	u8 gnt_bt1_sw_en;
++	u8 gnt_bt1;
++	u8 gnt_bt0_sw_en;
++	u8 gnt_bt0;
++	u8 gnt_wl_sw_en;
++	u8 gnt_wl;
++} __packed;
++
+ struct rtw89_mac_ax_wl_act {
+ 	u8 wlan_act_en;
+ 	u8 wlan_act;
+@@ -3374,27 +3385,89 @@ enum btc_rf_path {
+ 	BTC_RF_NUM,
+ };
+ 
+-struct rtw89_btc_fbtc_outsrc_set_info {
+-	u8 rf_band[BTC_RF_NUM]; /* 0:2G, 1:non-2G */
++struct rtw89_btc_fbtc_outsrc_set_info_v1 {
++	u8 rf_band[BTC_RF_NUM];
+ 	u8 btg_rx[BTC_RF_NUM];
+ 	u8 nbtg_tx[BTC_RF_NUM];
+ 
+-	struct rtw89_mac_ax_gnt gnt_set[BTC_RF_NUM]; /* refer to btc_gnt_ctrl */
+-	struct rtw89_mac_ax_wl_act wlact_set[BTC_RF_NUM]; /* BT0/BT1 */
++	struct rtw89_mac_ax_gnt gnt_set[BTC_RF_NUM];
++	struct rtw89_mac_ax_wl_act wlact_set[BTC_ALL_BT];
+ 
+ 	u8 pta_req_hw_band;
+ 	u8 rf_gbt_source;
+ 	u8 bt_enable_state;
+ 	u8 wl_btg_standby_chg;
+-	/* bit[15]-> 0:2G/1:5G,6G, bit[14:0]-> WL HWBx ch freq in MHz */
++
++	u8 fbd_group_en[RTW89_MAC_NUM][2];
++	__le16 rf_center_freq[RTW89_MAC_NUM];
++	__le16 fbd_group_bound[RTW89_MAC_NUM][2];
++	__le16 freq_diff_thres[RTW89_MAC_NUM][BTC_ALL_BT];
++} __packed;
++
++struct rtw89_btc_fbtc_outsrc_set_info_v6 {
++	u8 rf_band[BTC_RF_NUM];
++	u8 btg_rx[BTC_RF_NUM];
++	u8 nbtg_tx[BTC_RF_NUM];
++
++	struct rtw89_btc_gnt_ctrl gnt_set[RTW89_MAC_AX_COEX_GNT_NR];
++	struct rtw89_mac_ax_wl_act wlact_set[BTC_ALL_BT_EZL];
++
++	u8 pta_req_hw_band;
++	u8 rf_gbt_source;
++	u8 bt_enable_state;
++	u8 bt_plut_type;
++	u8 wl_tx_limit_en;
++	u8 fc_exec;
++	u8 wl_btg_standby_chg;
++	u8 rsvd;
++	u8 bb_path_sel_bt[BTC_RF_NUM];
++	u8 bb_phy_sel_bt[RTW89_PHY_NUM];
++	u8 fbd_group_en[RTW89_MAC_NUM][2];
++	__le16 rf_center_freq[RTW89_MAC_NUM];
++	__le16 freq_diff_thres[RTW89_MAC_NUM][BTC_ALL_BT_EZL];
++	__le16 fbd_group_bound[RTW89_MAC_NUM][2];
++	__le32 wl_tx_limit_time;
++} __packed;
++
++struct rtw89_btc_fbtc_outsrc_set_info {
++	u8 rf_band[BTC_RF_NUM]; /* 0:2GHz/1:5GHz for MPI_bb_hwsi_ignore_gnt_wl() */
++	u8 btg_rx[BTC_RF_NUM]; /* for MPI_bb_btg_bt_rx() */
++	u8 nbtg_tx[BTC_RF_NUM]; /* for MPI_bb_nbtg_bt_tx pre=AGC control */
++
++	struct rtw89_mac_ax_gnt gnt_set[BTC_RF_NUM]; /* refer to btc_gnt_ctrl */
++	struct rtw89_btc_gnt_ctrl gnt_set_be[RTW89_MAC_AX_COEX_GNT_NR];
++	struct rtw89_mac_ax_wl_act wlact_set[BTC_ALL_BT_EZL];
++
++	u8 pta_req_hw_band; /* Bind PTA to HWB0 or HWB1, only for 8922a 1-PTA */
++	u8 rf_gbt_source; /* gbt from S0 or S1 for RF 0x2[9], only for 8922a */
++
++	/* The followngs are for 8922c/d  new Multi-PTA design */
++	/* 0:BT0/1:BT1/2:ZB on/off for MAC(0xe580[0]/0xe680[0])/ RF 0x4[3:2] */
++	u8 bt_enable_state;
++	u8 bt_plut_type;   /* BT polluted type, refer to enum btc_plt_map */
++
++	u8 wl_tx_limit_en;
++	u8 fc_exec;
++	u8 wl_btg_standby_chg; /* keep RX-IQGen on in standby mode */
++	u8 rsvd;
++
++	u8 bb_path_sel_bt[BTC_RF_NUM]; /* bb s0(1) select GNT_BT0 or BT1 */
++	u8 bb_phy_sel_bt[RTW89_PHY_NUM]; /* bb phy0(1) select GNT_BT0 or BT1 */
++
+ 	/* forbidden group-> bit[1]:fbd rf-band, bit[0]: fbd enable */
+ 	u8 fbd_group_en[RTW89_MAC_NUM][2]; /* HWB0/1 +.Group0/1 */
++
++	/* bit[15]-> 0:2G/1:5G,6G, bit[14:0]-> WL HWBx ch freq in MHz */
+ 	u16 rf_center_freq[RTW89_MAC_NUM]; /* HWB0/1 */
+-	/* forbidden group boundary: [15:8]->UP, [7:0]->LO */
+-	u16 fbd_group_bound[RTW89_MAC_NUM][2]; /* HWB0/1 +.Group0/1 */
++
+ 	/* 11-bit in MHz, freq diff threshold */
+ 	u16 freq_diff_thres[RTW89_MAC_NUM][BTC_ALL_BT_EZL]; /* HWB0/1 vs.BT0/1/2 */
+-} __packed;
++
++	/* forbidden group boundary: [15:8]->UP, [7:0]->LO */
++	u16 fbd_group_bound[RTW89_MAC_NUM][2]; /* HWB0/1 +.Group0/1 */
++
++	u32 wl_tx_limit_time;
++};
+ 
+ union rtw89_btc_fbtc_slot_u {
+ 	struct rtw89_btc_fbtc_slot v1[CXST_MAX];
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.c b/drivers/net/wireless/realtek/rtw89/fw.c
+index 802887603d60..6ecacca844f6 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.c
++++ b/drivers/net/wireless/realtek/rtw89/fw.c
+@@ -6406,6 +6406,7 @@ int rtw89_fw_h2c_cxdrv_osi_info(struct rtw89_dev *rtwdev, u8 type)
+ 	u32 len = sizeof(*h2c);
+ 	struct sk_buff *skb;
+ 	int ret;
++	u8 i, j;
+ 
+ 	skb = rtw89_fw_h2c_alloc_skb_with_hdr(rtwdev, len);
+ 	if (!skb) {
+@@ -6418,7 +6419,105 @@ int rtw89_fw_h2c_cxdrv_osi_info(struct rtw89_dev *rtwdev, u8 type)
+ 	h2c->hdr.type = type;
+ 	h2c->hdr.ver = btc->ver->fcxosi;
+ 	h2c->hdr.len = len - H2C_LEN_CXDRVHDR_V7;
+-	h2c->osi = *osi;
++
++	memcpy(h2c->osi.rf_band, osi->rf_band, sizeof(osi->rf_band));
++	memcpy(h2c->osi.btg_rx, osi->btg_rx, sizeof(osi->btg_rx));
++	memcpy(h2c->osi.nbtg_tx, osi->nbtg_tx, sizeof(osi->nbtg_tx));
++
++	for (i = 0; i < BTC_RF_NUM; i++) {
++		h2c->osi.gnt_set[i] = osi->gnt_set[i];
++		h2c->osi.wlact_set[i] = osi->wlact_set[i];
++	}
++
++	h2c->osi.pta_req_hw_band = osi->pta_req_hw_band;
++	h2c->osi.rf_gbt_source = osi->rf_gbt_source;
++	h2c->osi.bt_enable_state = osi->bt_enable_state;
++	h2c->osi.wl_btg_standby_chg = osi->wl_btg_standby_chg;
++
++	memcpy(h2c->osi.fbd_group_en, osi->fbd_group_en, sizeof(osi->fbd_group_en));
++
++	for (i = 0; i < RTW89_MAC_NUM; i++) {
++		h2c->osi.rf_center_freq[i] = cpu_to_le16(osi->rf_center_freq[i]);
++		for (j = 0; j < BTC_RF_NUM; j++)
++			h2c->osi.fbd_group_bound[i][j] = cpu_to_le16(osi->fbd_group_bound[i][j]);
++	}
++
++	for (i = 0; i < RTW89_MAC_NUM; i++) {
++		for (j = 0; j < BTC_ALL_BT; j++)
++			h2c->osi.freq_diff_thres[i][j] = cpu_to_le16(osi->freq_diff_thres[i][j]);
++	}
++
++	rtw89_h2c_pkt_set_hdr(rtwdev, skb, FWCMD_TYPE_H2C,
++			      H2C_CAT_OUTSRC, BTFC_SET,
++			      SET_DRV_INFO, 0, 0,
++			      len);
++
++	ret = rtw89_h2c_tx(rtwdev, skb, false);
++	if (ret) {
++		rtw89_err(rtwdev, "failed to send h2c\n");
++		goto fail;
++	}
++
++	return 0;
++fail:
++	dev_kfree_skb_any(skb);
++
++	return ret;
++}
++
++int rtw89_fw_h2c_cxdrv_osi_info_v6(struct rtw89_dev *rtwdev, u8 type)
++{
++	struct rtw89_btc *btc = &rtwdev->btc;
++	struct rtw89_btc_fbtc_outsrc_set_info *osi = &btc->dm.ost_info;
++	struct rtw89_h2c_cxosi_v6 *h2c;
++	u32 len = sizeof(*h2c);
++	struct sk_buff *skb;
++	int ret;
++	u8 i, j;
++
++	skb = rtw89_fw_h2c_alloc_skb_with_hdr(rtwdev, len);
++	if (!skb) {
++		rtw89_err(rtwdev, "failed to alloc skb for h2c cxdrv_osi_v6\n");
++		return -ENOMEM;
++	}
++	skb_put(skb, len);
++	h2c = (struct rtw89_h2c_cxosi_v6 *)skb->data;
++
++	h2c->hdr.type = type;
++	h2c->hdr.ver = btc->ver->fcxosi;
++	h2c->hdr.len = len - H2C_LEN_CXDRVHDR_V7;
++
++	memcpy(h2c->osi.rf_band, osi->rf_band, sizeof(osi->rf_band));
++	memcpy(h2c->osi.btg_rx, osi->btg_rx, sizeof(osi->btg_rx));
++	memcpy(h2c->osi.nbtg_tx, osi->nbtg_tx, sizeof(osi->nbtg_tx));
++	memcpy(h2c->osi.gnt_set, osi->gnt_set, sizeof(osi->gnt_set));
++	memcpy(h2c->osi.wlact_set, osi->wlact_set, sizeof(osi->wlact_set));
++
++	h2c->osi.pta_req_hw_band = osi->pta_req_hw_band;
++	h2c->osi.rf_gbt_source = osi->rf_gbt_source;
++	h2c->osi.bt_enable_state = osi->bt_enable_state;
++	h2c->osi.bt_plut_type = osi->bt_plut_type;
++	h2c->osi.wl_tx_limit_en = osi->wl_tx_limit_en;
++	h2c->osi.fc_exec = osi->fc_exec;
++	h2c->osi.wl_btg_standby_chg = osi->wl_btg_standby_chg;
++	h2c->osi.rsvd = osi->rsvd;
++
++	memcpy(h2c->osi.bb_path_sel_bt, osi->bb_path_sel_bt, sizeof(osi->bb_path_sel_bt));
++	memcpy(h2c->osi.bb_phy_sel_bt, osi->bb_phy_sel_bt, sizeof(osi->bb_phy_sel_bt));
++	memcpy(h2c->osi.fbd_group_en, osi->fbd_group_en, sizeof(osi->fbd_group_en));
++
++	for (i = 0; i < RTW89_MAC_NUM; i++) {
++		h2c->osi.rf_center_freq[i] = cpu_to_le16(osi->rf_center_freq[i]);
++		for (j = 0; j < BTC_RF_NUM; j++)
++			h2c->osi.fbd_group_bound[i][j] = cpu_to_le16(osi->fbd_group_bound[i][j]);
++	}
++
++	for (i = 0; i < RTW89_MAC_NUM; i++) {
++		for (j = 0; j < BTC_ALL_BT_EZL; j++)
++			h2c->osi.freq_diff_thres[i][j] = cpu_to_le16(osi->freq_diff_thres[i][j]);
++	}
++
++	h2c->osi.wl_tx_limit_time = cpu_to_le32(osi->wl_tx_limit_time);
+ 
+ 	rtw89_h2c_pkt_set_hdr(rtwdev, skb, FWCMD_TYPE_H2C,
+ 			      H2C_CAT_OUTSRC, BTFC_SET,
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.h b/drivers/net/wireless/realtek/rtw89/fw.h
+index 72f56d32e3b0..c6131778f6a2 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.h
++++ b/drivers/net/wireless/realtek/rtw89/fw.h
+@@ -2455,7 +2455,12 @@ struct rtw89_h2c_cxrole_v10 {
+ 
+ struct rtw89_h2c_cxosi {
+ 	struct rtw89_h2c_cxhdr_v7 hdr;
+-	struct rtw89_btc_fbtc_outsrc_set_info osi;
++	struct rtw89_btc_fbtc_outsrc_set_info_v1 osi;
++} __packed;
++
++struct rtw89_h2c_cxosi_v6 {
++	struct rtw89_h2c_cxhdr_v7 hdr;
++	struct rtw89_btc_fbtc_outsrc_set_info_v6 osi;
+ } __packed;
+ 
+ struct rtw89_h2c_cxinit {
+@@ -5385,6 +5390,7 @@ int rtw89_fw_h2c_cxdrv_role_v7(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_role_v8(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_role_v10(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_osi_info(struct rtw89_dev *rtwdev, u8 type);
++int rtw89_fw_h2c_cxdrv_osi_info_v6(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_ctrl(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_ctrl_v7(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_ctrl_v9(struct rtw89_dev *rtwdev, u8 type);
+-- 
+2.55.0
+

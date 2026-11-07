@@ -1,0 +1,119 @@
+[
+  {
+    "distro": "ubuntu",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/ubuntu.svg",
+    "license": "CC0-1.0",
+    "modification": "Display fill color"
+  },
+  {
+    "distro": "arch",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/archlinux.svg",
+    "license": "CC0-1.0",
+    "modification": "Display fill color"
+  },
+  {
+    "distro": "debian",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/debian.svg",
+    "license": "CC0-1.0",
+    "modification": "Display fill color"
+  },
+  {
+    "distro": "fedora",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/fedora.svg",
+    "license": "CC0-1.0",
+    "modification": "Display fill color"
+  },
+  {
+    "distro": "nixos",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/nixos.svg",
+    "license": "CC0-1.0",
+    "modification": "Display fill color"
+  },
+  {
+    "distro": "gentoo",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/gentoo.svg",
+    "license": "CC0-1.0",
+    "modification": "Display fill color"
+  },
+  {
+    "distro": "opensuse",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/opensuse.svg",
+    "license": "CC0-1.0",
+    "modification": "Display fill color"
+  },
+  {
+    "distro": "steamos",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/steam.svg",
+    "license": "CC0-1.0",
+    "modification": "Display fill color"
+  },
+  {
+    "distro": "alpine",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/alpinelinux.svg",
+    "license": "CC0-1.0",
+    "modification": "Display fill color"
+  },
+  {
+    "distro": "popos",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/popos.svg",
+    "license": "CC0-1.0",
+    "modification": "Display fill color"
+  },
+  {
+    "distro": "cachyos",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/cachyos.svg",
+    "license": "CC0-1.0",
+    "modification": "Display fill color"
+  },
+  {
+    "distro": "nobara",
+    "url": "https://github.com/Nobara-Project/nobara-core-packages/releases/download/1.0/nobara-logos.tar.gz",
+    "member": "nobara-logos/icons/hicolor/scalable/apps/nobara-logo-icon.svg",
+    "license": "See NOBARA-COPYING; upstream logo/trademark identification"
+  },
+  {
+    "distro": "void",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/voidlinux.svg",
+    "license": "CC0-1.0; logo trademarks remain with their owners"
+  },
+  {
+    "distro": "solus",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/solus.svg",
+    "license": "CC0-1.0; logo trademarks remain with their owners"
+  },
+  {
+    "distro": "slackware",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/slackware.svg",
+    "license": "CC0-1.0; logo trademarks remain with their owners"
+  },
+  {
+    "distro": "manjaro",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/manjaro.svg",
+    "license": "CC0-1.0; logo trademarks remain with their owners"
+  },
+  {
+    "distro": "kali",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/kalilinux.svg",
+    "license": "CC0-1.0; logo trademarks remain with their owners"
+  },
+  {
+    "distro": "centos",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/centos.svg",
+    "license": "CC0-1.0; logo trademarks remain with their owners"
+  },
+  {
+    "distro": "rocky",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/rockylinux.svg",
+    "license": "CC0-1.0; logo trademarks remain with their owners"
+  },
+  {
+    "distro": "alma",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/almalinux.svg",
+    "license": "CC0-1.0; logo trademarks remain with their owners"
+  },
+  {
+    "distro": "asahi",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/7f18aaa676087b8240b6f4ff58a6720be282da59/icons/asahilinux.svg",
+    "license": "CC0-1.0; logo trademarks remain with their owners"
+  }
+]

@@ -1,0 +1,201 @@
+From edb5f66ef228c2303a3159d1211c4b29c872a711 Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Sun, 12 Jul 2026 11:05:01 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Refine send firmware
+ command function
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Because the coexistence offload more register/ hardware setting I/O to
+firmware by coexistence itself, and it goes with the same entry with other
+control action, so the firmware command entry need to add different
+condition to judge should it followed coexistence TLV format or not.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260712030506.43438-7-pkshih@realtek.com
+(cherry picked from commit a67bb858ba4dbd64e5be901cab414110c06e86d3)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/coex.c | 107 +++++++++++++++++++++-
+ drivers/net/wireless/realtek/rtw89/core.h |   4 +
+ 2 files changed, 110 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/coex.c b/drivers/net/wireless/realtek/rtw89/coex.c
+index ff3345824a2a..07d054f59eb5 100644
+--- a/drivers/net/wireless/realtek/rtw89/coex.c
++++ b/drivers/net/wireless/realtek/rtw89/coex.c
+@@ -936,6 +936,14 @@ static void _run_coex(struct rtw89_dev *rtwdev,
+ static void _write_scbd(struct rtw89_dev *rtwdev, u8 bid, u32 val, bool state);
+ static u8 _sned_h2c_w2bscbd(struct rtw89_dev *rtwdev, bool force_exec, u8 bid);
+ static void _update_bt_scbd(struct rtw89_dev *rtwdev, u8 bid);
++static const char *id_to_h2c(u32 id);
++
++static void _reset_h2c_macro(struct rtw89_btc *btc)
++{
++	btc->hbuf_len = 0;
++	btc->hbuf_cnt = 0;
++	memset(btc->hbuf, 0, BTC_H2C_MAXLEN);
++}
+ 
+ static int _send_fw_cmd(struct rtw89_dev *rtwdev, u8 h2c_class, u8 h2c_func,
+ 			void *param, u16 len)
+@@ -945,6 +953,8 @@ static int _send_fw_cmd(struct rtw89_dev *rtwdev, u8 h2c_class, u8 h2c_func,
+ 	struct rtw89_btc_cx *cx = &btc->cx;
+ 	struct rtw89_btc_wl_info *wl = &cx->wl;
+ 	struct rtw89_btc_dm *dm = &btc->dm;
++	u8 h2c_func_mask, bid = BTC_BT_1ST;
++	u8 *buf = param;
+ 	int ret;
+ 
+ 	if (len > BTC_H2C_MAXLEN || len == 0) {
+@@ -966,7 +976,69 @@ static int _send_fw_cmd(struct rtw89_dev *rtwdev, u8 h2c_class, u8 h2c_func,
+ 		return -EINVAL;
+ 	}
+ 
+-	ret = rtw89_fw_h2c_raw_with_hdr(rtwdev, h2c_class, h2c_func, param, len,
++	h2c_func_mask = h2c_func & (~BT_H2C_FUNC_BT2ND);
++	if (rtwdev->chip->para_ver & BTC_FEAT_DUAL_BT)
++		bid = !!(h2c_func & BT_H2C_FUNC_BT2ND);
++
++	if (btc->io_oflld_type != BTC_IO_OFLD_BTC_H2C || btc->cli_h2c_cmd ||
++	    h2c_func_mask == SET_H2C_MACRO ||
++	    (h2c_func_mask == SET_DRV_INFO && buf[0] == CXDRVINFO_TRX) ||
++	    (h2c_func_mask == SET_IOFLD_SCBD && dm->scbd_write_instant) ||
++	    h2c_func_mask == SET_BT_LNA_CONSTRAIN) {
++		h2c_class = BTFC_SET;
++
++		ret = rtw89_fw_h2c_raw_with_hdr(rtwdev, h2c_class, h2c_func,
++						buf, len, false, true);
++
++		rtw89_debug(rtwdev, RTW89_DBG_BTC,
++			    "[BTC], %s():class=%d, bt%d-func=%s, len=%d\n",
++			    __func__, h2c_class, bid,
++			    id_to_h2c(h2c_func_mask), len);
++
++		if (h2c_func_mask == SET_H2C_MACRO) {
++			rtw89_debug(rtwdev, RTW89_DBG_BTC,
++				    "[BTC], %s():Send H2C-MACRO cnt=%d, len=%d\n",
++				    __func__, btc->hbuf_cnt, btc->hbuf_len);
++			_reset_h2c_macro(btc); /* clear H2C MACRO buffer */
++		}
++
++		if (ret != 0) { /* Send H2C fail */
++			rtw89_debug(rtwdev, RTW89_DBG_BTC,
++				    "[BTC], %s():return by rtw_hal_mac_send_h2c\n",
++				    __func__);
++			btc->fwinfo.cnt_h2c_fail++;
++			return 0;
++		}
++
++		btc->fwinfo.cnt_h2c++;
++	} else { /* Fill H2C MACRO buffer(TLV format) temporarily */
++		if (btc->hbuf_cnt == 0)
++			_reset_h2c_macro(btc);
++
++		/* Type:1 byte, Length:2 Bytes, Data:len bytes */
++		if (btc->hbuf_len + len + 3 >= BTC_H2C_MAXLEN) {
++			rtw89_debug(rtwdev, RTW89_DBG_BTC,
++				    "[BTC], %s():return by MACRO buf full(%d)\n",
++				    __func__, btc->hbuf_len + len + 3);
++			btc->fwinfo.cnt_h2c_fail++;
++			return 0;
++		}
++
++		btc->hbuf[btc->hbuf_len] = h2c_func;
++		btc->hbuf[btc->hbuf_len + 1] = len & GENMASK(7, 0);
++		btc->hbuf[btc->hbuf_len + 2] = (len & GENMASK(15, 8)) >> 8;
++
++		memcpy(&btc->hbuf[btc->hbuf_len + 3], buf, len);
++		btc->hbuf_len = btc->hbuf_len + len + 3;
++		btc->hbuf_cnt++;
++
++		rtw89_debug(rtwdev, RTW89_DBG_BTC,
++			    "[BTC], %s():Buffer H2C-MACRO cnt=%d/bt%d-func=%s/len=%d\n",
++			    __func__, btc->hbuf_cnt, bid,
++			    id_to_h2c(h2c_func_mask), len);
++	}
++
++	ret = rtw89_fw_h2c_raw_with_hdr(rtwdev, h2c_class, h2c_func, buf, len,
+ 					false, true);
+ 	if (ret)
+ 		pfwinfo->cnt_h2c_fail++;
+@@ -9249,6 +9321,7 @@ static int _show_bt_info(struct rtw89_dev *rtwdev, char *buf, size_t bufsz)
+ #define CASE_BTC_POLUT_STR(e) case BTC_PLT_## e: return #e
+ #define CASE_BTC_REGTYPE_STR(e) case REG_## e: return #e
+ #define CASE_BTC_GDBG_STR(e) case BTC_DBG_## e: return #e
++#define CASE_BTC_H2CCMD(e) case SET_##e: return #e
+ 
+ static const char *id_to_polut(u32 id)
+ {
+@@ -9529,6 +9602,38 @@ static const char *id_to_ant(u32 id)
+ 	}
+ }
+ 
++static const char *id_to_h2c(u32 id)
++{
++	switch (id) {
++	CASE_BTC_H2CCMD(REPORT_EN);
++	CASE_BTC_H2CCMD(SLOT_TABLE);
++	CASE_BTC_H2CCMD(MREG_TABLE);
++	CASE_BTC_H2CCMD(CX_POLICY);
++	CASE_BTC_H2CCMD(GPIO_DBG);
++	CASE_BTC_H2CCMD(DRV_INFO);
++	CASE_BTC_H2CCMD(DRV_EVENT);
++	CASE_BTC_H2CCMD(BT_WREG_ADDR);
++	CASE_BTC_H2CCMD(BT_WREG_VAL);
++	CASE_BTC_H2CCMD(BT_RREG_ADDR);
++	CASE_BTC_H2CCMD(BT_WL_CH_INFO);
++	CASE_BTC_H2CCMD(BT_INFO_REPORT);
++	CASE_BTC_H2CCMD(BT_IGNORE_WLAN_ACT);
++	CASE_BTC_H2CCMD(BT_TX_PWR);
++	CASE_BTC_H2CCMD(BT_LNA_CONSTRAIN);
++	CASE_BTC_H2CCMD(BT_QUERY_DEV_LIST);
++	CASE_BTC_H2CCMD(BT_QUERY_DEV_INFO);
++	CASE_BTC_H2CCMD(BT_PSD_REPORT);
++	CASE_BTC_H2CCMD(H2C_TEST);
++	CASE_BTC_H2CCMD(IOFLD_RF);
++	CASE_BTC_H2CCMD(IOFLD_BB);
++	CASE_BTC_H2CCMD(IOFLD_MAC);
++	CASE_BTC_H2CCMD(IOFLD_SCBD);
++	CASE_BTC_H2CCMD(H2C_MACRO);
++	default:
++		return "unknown";
++	}
++}
++
+ static
+ int scnprintf_segment(char *buf, size_t bufsz, const char *prefix, const u16 *data,
+ 		      u8 len, u8 seg_len, u8 start_idx, u8 ring_len)
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index dbab91e24728..08c3273230ce 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -3820,6 +3820,7 @@ struct rtw89_btc_btf_fwinfo {
+ };
+ 
+ #define RTW89_BTC_POLICY_MAXLEN 512
++#define BTC_H2C_MAXLENC 2020
+ 
+ struct rtw89_btc {
+ 	const struct rtw89_btc_ver *ver;
+@@ -3839,11 +3840,14 @@ struct rtw89_btc {
+ 	u32 bt_req_len[RTW89_PHY_NUM];
+ 
+ 	u8 policy[RTW89_BTC_POLICY_MAXLEN];
++	u8 hbuf[BTC_H2C_MAXLENC]; /* H2C Macro buffer */
++	u8 hbuf_cnt; /* H2C cmd count in buffer */
+ 	u8 ant_type;
+ 	u8 btg_pos;
+ 	u8 io_oflld_type;
+ 	u16 policy_len;
+ 	u16 policy_type;
++	u16 hbuf_len; /* H2C used length, it sshould be <= BTC_H2C_MAXLEN */
+ 	u32 hubmsg_cnt;
+ 	bool bt_req_en;
+ 	bool update_policy_force;
+-- 
+2.55.0
+

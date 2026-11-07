@@ -1,0 +1,39 @@
+From d58b0c9d628f9043ae591cdf22c8e3d8ca34575b Mon Sep 17 00:00:00 2001
+From: Mario Limonciello <mario.limonciello@amd.com>
+Date: Mon, 28 Oct 2024 09:55:41 -0500
+Subject: [PATCH] cpufreq/amd-pstate: Push adjust_perf vfunc init into cpu_init
+
+As the driver can be changed in and out of different modes it's possible
+that adjust_perf is assigned when it shouldn't be.
+
+This could happen if an MSR design is started up in passive mode and then
+switches to active mode.
+
+To solve this explicitly clear `adjust_perf` in amd_pstate_epp_cpu_init().
+
+Tested-by: Klara Modin <klarasmodin@gmail.com>
+Tested-by: Dhananjay Ugwekar <dhananjay.ugwekar@amd.com>
+Link: https://lore.kernel.org/r/20241028145542.1739160-1-superm1@kernel.org
+Signed-off-by: Mario Limonciello <mario.limonciello@amd.com>
+(cherry picked from commit 3ac757e8db3deacc8058912d55efd1390f985d80)
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/cpufreq/amd-pstate.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/cpufreq/amd-pstate.c b/drivers/cpufreq/amd-pstate.c
+index 63801e039310..f6db2e738f7f 100644
+--- a/drivers/cpufreq/amd-pstate.c
++++ b/drivers/cpufreq/amd-pstate.c
+@@ -1955,6 +1955,8 @@ static int amd_pstate_epp_cpu_init(struct cpufreq_policy *policy)
+ 
+ 	current_pstate_driver->adjust_perf = NULL;
+ 
++	current_pstate_driver->adjust_perf = NULL;
++
+ 	return 0;
+ 
+ free_cpudata1:
+-- 
+2.55.0
+

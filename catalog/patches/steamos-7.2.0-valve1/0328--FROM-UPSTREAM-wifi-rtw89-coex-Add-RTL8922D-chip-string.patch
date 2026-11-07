@@ -1,0 +1,44 @@
+From 521efcaa596af9d7097834cb437c2ec0a0c1e41c Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Wed, 24 Jun 2026 11:39:41 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Add RTL8922D chip string
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add string for logic using and show logs.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260624033941.45918-11-pkshih@realtek.com
+(cherry picked from commit 9a149cf572e90157769ab3a8a3bc8cf5601dcfaa)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/coex.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/coex.c b/drivers/net/wireless/realtek/rtw89/coex.c
+index 6f9bb31b5263..1361d4d54528 100644
+--- a/drivers/net/wireless/realtek/rtw89/coex.c
++++ b/drivers/net/wireless/realtek/rtw89/coex.c
+@@ -313,6 +313,7 @@ static u32 chip_id_to_bt_rom_code_id(u32 id)
+ 	case RTL8851B:
+ 		return 0x8851;
+ 	case RTL8922A:
++	case RTL8922D:
+ 		return 0x8922;
+ 	default:
+ 		return 0;
+@@ -347,6 +348,8 @@ static char *chip_id_str(u32 id)
+ 		return "RTL8851B";
+ 	case RTL8922A:
+ 		return "RTL8922A";
++	case RTL8922D:
++		return "RTL8922D";
+ 	default:
+ 		return "UNKNOWN";
+ 	}
+-- 
+2.55.0
+

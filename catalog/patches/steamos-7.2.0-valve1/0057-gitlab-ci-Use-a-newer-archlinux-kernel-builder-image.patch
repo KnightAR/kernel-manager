@@ -1,0 +1,52 @@
+From 14900323a193b0aca1c3849a2331933dac96d6d0 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Wed, 6 Aug 2025 18:11:02 +0300
+Subject: [PATCH] gitlab-ci: Use a newer archlinux-kernel-builder image
+
+Building the Arch package for kernel v6.15 (via pacman-pkg make target)
+revealed an unexpected increase in size since v6.11, i.e. from
+136 MB to 231 MB, which means ~70%.
+
+The initial assumption was that it might be related to some of the
+config changes introduced by upstream Arch package.  This proved to be
+wrong soon after started the investigation, since building the same
+v6.15 tree with the configurations previously used for v6.11 did not
+result in a size reduction.
+
+Extending the build tests on a few mainline kernels revealed the problem
+only affects v6.15, since any of the older releases verified (e.g.
+v6.14) did not exhibit the behavior.
+
+Surprisingly, after switching to a local build environment, the package
+size for v6.15 kernel went back to normal.  The only obvious difference
+in the setup stemmed from the GCC version: 14.2.1 (on the CI side) vs.
+15.1.1 (locally).
+
+Updating the kernel builder image in the linux-integration CI
+environment had the effect of switching to GCC 15.1.1 and, implicitly,
+fixed the size issue.
+
+Make use of the newer archlinux-kernel-builder Docker image.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index c4aebd4b61ed..2ef9d7352b7e 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -98,7 +98,7 @@ build-debian-kernel-builder:
+     IMAGE_DISTRO_BASE: archlinux
+     IMAGE_DISTRO_TAG: base-devel
+     IMAGE_NAME: archlinux-kernel-builder
+-    IMAGE_TAG: "2024-12-02"
++    IMAGE_TAG: "2025-08-02"
+ 
+ check-archlinux-kernel-builder:
+   extends:
+-- 
+2.55.0
+

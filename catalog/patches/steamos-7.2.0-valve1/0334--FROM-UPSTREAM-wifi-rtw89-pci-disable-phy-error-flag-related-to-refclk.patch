@@ -1,0 +1,40 @@
+From 52ff53b44211fd026f31e43e961bf843e6332a50 Mon Sep 17 00:00:00 2001
+From: Chih-Kang Chang <gary.chang@realtek.com>
+Date: Thu, 25 Jun 2026 14:15:41 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: pci: disable phy error flag
+ related to refclk
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On some platforms, refclk is not available up to 15 ms after entering
+suspend. The delayed clock cause the hardware to detect falsely error
+and trigger an unexpected hardware reset. Disable the phy error flag
+related to refclk to fix it.
+
+Signed-off-by: Chih-Kang Chang <gary.chang@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260625061545.44808-7-pkshih@realtek.com
+(cherry picked from commit 0ec249ffc060cd91f3f6cefd7e7008c17bcb20b9)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/pci.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/pci.h b/drivers/net/wireless/realtek/rtw89/pci.h
+index c3f2d0df5846..92c30c7f9fb2 100644
+--- a/drivers/net/wireless/realtek/rtw89/pci.h
++++ b/drivers/net/wireless/realtek/rtw89/pci.h
+@@ -58,7 +58,7 @@
+ #define B_AX_DIV			GENMASK(15, 14)
+ #define RAC_SET_PPR_V1			0x31
+ #define RAC_ANA40			0x40
+-#define PHY_ERR_IMR_DIS			(BIT(9) | BIT(8) | BIT(0))
++#define PHY_ERR_IMR_DIS			(BIT(9) | BIT(2) | BIT(1) | BIT(0))
+ #define RAC_ANA41			0x41
+ #define PHY_ERR_FLAG_EN		        BIT(6)
+ 
+-- 
+2.55.0
+

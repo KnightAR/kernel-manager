@@ -1,0 +1,52 @@
+From acf3be45cff2e5f6424382a52f4fae26ee904342 Mon Sep 17 00:00:00 2001
+From: Kees Cook <kees@kernel.org>
+Date: Sat, 14 Mar 2026 14:24:56 +0100
+Subject: [PATCH 17/17] gcc-plugins: Always define CONST_CAST_GIMPLE and
+ CONST_CAST_TREE
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+[ Upstream commit 905c559e51497b8bfdbb68df8be56d2f70f0de8e ]
+
+For gcc-16, the CONST_CAST macro family was removed. Add back what
+we were using in gcc-common.h, as they are simple wrappers.
+
+See GCC commits:
+  c3d96ff9e916c02584aa081f03ab999292efbb50
+  458c7926d48959abcb2c1adaa22458e27459a551
+
+Suggested-by: Ingo Saitz <ingo@hannover.ccc.de>
+Link: https://lore.kernel.org/lkml/ab6OKoay0OWkywjK@spatz.zoo
+Fixes: 6b90bd4ba40b ("GCC plugin infrastructure")
+Tested-by: Ivan Bulatovic <combuster@archlinux.us>
+Tested-by: Christopher Cradock <christopher@cradock.myzen.co.uk>
+Signed-off-by: Kees Cook <kees@kernel.org>
+Signed-off-by: Sasha Levin <sashal@kernel.org>
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ scripts/gcc-plugins/gcc-common.h | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/scripts/gcc-plugins/gcc-common.h b/scripts/gcc-plugins/gcc-common.h
+index 70c67061cc44..7166e1e4de61 100644
+--- a/scripts/gcc-plugins/gcc-common.h
++++ b/scripts/gcc-plugins/gcc-common.h
+@@ -332,14 +332,14 @@ static inline void cgraph_call_edge_duplication_hooks(cgraph_edge *cs1, cgraph_e
+ 	symtab->call_edge_duplication_hooks(cs1, cs2);
+ }
+ 
+-#if BUILDING_GCC_VERSION >= 6000
+ typedef gimple *gimple_ptr;
+ typedef const gimple *const_gimple_ptr;
+ #define gimple gimple_ptr
+ #define const_gimple const_gimple_ptr
+ #undef CONST_CAST_GIMPLE
+-#define CONST_CAST_GIMPLE(X) CONST_CAST(gimple, (X))
+-#endif
++#define CONST_CAST_GIMPLE(X) const_cast<gimple>((X))
++#undef CONST_CAST_TREE
++#define CONST_CAST_TREE(X) const_cast<tree>((X))
+ 
+ /* gimple related */
+ static inline gimple gimple_build_assign_with_ops(enum tree_code subcode, tree lhs, tree op1, tree op2 MEM_STAT_DECL)

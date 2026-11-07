@@ -1,0 +1,237 @@
+From 006ee3983d9ea6f9b48706b7214d58b90c0d3efa Mon Sep 17 00:00:00 2001
+From: Natalie Vock <nat@pixelcluster.dev>
+Date: Wed, 12 Aug 2026 13:44:53 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/amdgpu: Pass amdgpu_vm_update_ctx to
+ amdgpu_vm_update_pdes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Trivial cleanup. No functional change.
+
+Signed-off-by: Natalie Vock <nat@pixelcluster.dev>
+[nfraprado: fixed conflicts]
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .../gpu/drm/amd/amdgpu/amdgpu_amdkfd_gpuvm.c  |  5 +++-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c        | 10 +++----
+ drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c       |  2 +-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_userq.c     |  6 ++++-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c        | 27 +++++++++----------
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h        |  3 +--
+ drivers/gpu/drm/amd/amdgpu/mes_v12_1.c        |  2 +-
+ drivers/gpu/drm/amd/amdkfd/kfd_svm.c          |  2 +-
+ 8 files changed, 31 insertions(+), 26 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd_gpuvm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd_gpuvm.c
+index 6fb230fd0057..54e15e225c32 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd_gpuvm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd_gpuvm.c
+@@ -501,9 +501,12 @@ static int vm_update_pds(struct amdgpu_vm *vm, struct amdgpu_sync *sync)
+ {
+ 	struct amdgpu_bo *pd = vm->root.bo;
+ 	struct amdgpu_device *adev = amdgpu_ttm_adev(pd->tbo.bdev);
++	struct amdgpu_vm_update_ctx ctx;
+ 	int ret;
+ 
+-	ret = amdgpu_vm_update_pdes(adev, vm, false);
++	amdgpu_vm_update_ctx_init(&ctx, adev, vm);
++	ret = amdgpu_vm_update_pdes(&ctx, false);
++	amdgpu_vm_update_ctx_fini(&ctx);
+ 	if (ret)
+ 		return ret;
+ 
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c
+index 50d3b9515b2a..8446bec04782 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c
+@@ -1226,15 +1226,15 @@ static int amdgpu_cs_vm_handling(struct amdgpu_cs_parser *p)
+ 			goto err_fini_ctx;
+ 	}
+ 
+-	amdgpu_vm_update_ctx_fini(&update_ctx);
+-
+ 	r = amdgpu_vm_handle_moved(adev, vm, drm_exec_ticket(&p->exec));
+ 	if (r)
+-		return r;
++		goto err_fini_ctx;
+ 
+-	r = amdgpu_vm_update_pdes(adev, vm, false);
++	r = amdgpu_vm_update_pdes(&update_ctx, false);
+ 	if (r)
+-		return r;
++		goto err_fini_ctx;
++
++	amdgpu_vm_update_ctx_fini(&update_ctx);
+ 
+ 	r = amdgpu_sync_fence(&p->sync, vm->last_update, GFP_KERNEL);
+ 	if (r)
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
+index 8123b13420f4..b5f5a6989d81 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
+@@ -798,7 +798,7 @@ amdgpu_gem_va_update_vm(struct amdgpu_vm_update_ctx *ctx,
+ 	}
+ 
+ 	/* Always update PDEs after we touched the mappings. */
+-	r = amdgpu_vm_update_pdes(ctx->adev, ctx->vm, false);
++	r = amdgpu_vm_update_pdes(ctx, false);
+ 	if (r)
+ 		goto error;
+ 
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_userq.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_userq.c
+index 651786c7fdf8..727688ea4552 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_userq.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_userq.c
+@@ -972,6 +972,7 @@ amdgpu_userq_vm_validate(struct amdgpu_userq_mgr *uq_mgr)
+ 	struct amdgpu_hmm_range *range;
+ 	struct amdgpu_vm *vm = &fpriv->vm;
+ 	unsigned long key, tmp_key;
++	struct amdgpu_vm_update_ctx vmctx;
+ 	struct amdgpu_bo_va *bo_va;
+ 	struct amdgpu_usermode_queue *queue;
+ 	struct amdgpu_bo *bo;
+@@ -983,6 +984,8 @@ amdgpu_userq_vm_validate(struct amdgpu_userq_mgr *uq_mgr)
+ 
+ retry_lock:
+ 	drm_exec_init(&exec, DRM_EXEC_IGNORE_DUPLICATES, 0);
++	amdgpu_vm_update_ctx_init(&vmctx, adev, vm);
++
+ 	drm_exec_until_all_locked(&exec) {
+ 		ret = amdgpu_vm_lock_pd(vm, &exec, 1);
+ 		drm_exec_retry_on_contention(&exec);
+@@ -1076,7 +1079,7 @@ retry_lock:
+ 		goto retry_lock;
+ 	}
+ 
+-	ret = amdgpu_vm_update_pdes(adev, vm, false);
++	ret = amdgpu_vm_update_pdes(&vmctx, false);
+ 	if (ret)
+ 		goto unlock_all;
+ 
+@@ -1112,6 +1115,7 @@ retry_lock:
+ 		drm_file_err(uq_mgr->file, "Failed to replace eviction fence\n");
+ 
+ unlock_all:
++	amdgpu_vm_update_ctx_fini(&vmctx);
+ 	drm_exec_fini(&exec);
+ free_ranges:
+ 	xa_for_each(&xa, tmp_key, range) {
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+index ba34005df87d..9ea5eb9bae94 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+@@ -1113,33 +1113,32 @@ uint64_t amdgpu_vm_map_gart(const dma_addr_t *pages_addr, uint64_t addr)
+  * Returns:
+  * 0 for success, error for failure.
+  */
+-int amdgpu_vm_update_pdes(struct amdgpu_device *adev,
+-			  struct amdgpu_vm *vm, bool immediate)
++int amdgpu_vm_update_pdes(struct amdgpu_vm_update_ctx *ctx, bool immediate)
+ {
+ 	struct amdgpu_vm_update_params params;
+ 	struct amdgpu_vm_bo_base *entry, *tmp;
+ 	bool flush_tlb_needed = false;
+ 	int r, idx;
+ 
+-	amdgpu_vm_assert_locked(vm);
++	amdgpu_vm_assert_locked(ctx->vm);
+ 
+-	if (list_empty(&vm->kernel.needs_update))
++	if (list_empty(&ctx->vm->kernel.needs_update))
+ 		return 0;
+ 
+-	if (!drm_dev_enter(adev_to_drm(adev), &idx))
++	if (!drm_dev_enter(adev_to_drm(ctx->adev), &idx))
+ 		return -ENODEV;
+ 
+ 	memset(&params, 0, sizeof(params));
+-	params.adev = adev;
+-	params.vm = vm;
++	params.adev = ctx->adev;
++	params.vm = ctx->vm;
+ 	params.immediate = immediate;
+ 
+-	r = vm->update_funcs->prepare(&params, NULL,
+-				      AMDGPU_KERNEL_JOB_ID_VM_UPDATE_PDES);
++	r = ctx->vm->update_funcs->prepare(&params, NULL,
++					   AMDGPU_KERNEL_JOB_ID_VM_UPDATE_PDES);
+ 	if (r)
+ 		goto error;
+ 
+-	list_for_each_entry(entry, &vm->kernel.needs_update, vm_status) {
++	list_for_each_entry(entry, &ctx->vm->kernel.needs_update, vm_status) {
+ 		/* vm_flush_needed after updating moved PDEs */
+ 		flush_tlb_needed |= entry->moved;
+ 
+@@ -1148,14 +1147,14 @@ int amdgpu_vm_update_pdes(struct amdgpu_device *adev,
+ 			goto error;
+ 	}
+ 
+-	r = vm->update_funcs->commit(&params, &vm->last_update);
++	r = ctx->vm->update_funcs->commit(&params, &ctx->vm->last_update);
+ 	if (r)
+ 		goto error;
+ 
+ 	if (flush_tlb_needed)
+-		atomic64_inc(&vm->tlb_seq);
++		atomic64_inc(&ctx->vm->tlb_seq);
+ 
+-	list_for_each_entry_safe(entry, tmp, &vm->kernel.needs_update,
++	list_for_each_entry_safe(entry, tmp, &ctx->vm->kernel.needs_update,
+ 				 vm_status)
+ 		amdgpu_vm_bo_idle(entry);
+ 
+@@ -3242,7 +3241,7 @@ bool amdgpu_vm_handle_fault(struct amdgpu_device *adev, u32 pasid,
+ 	if (r)
+ 		goto error_unlock;
+ 
+-	r = amdgpu_vm_update_pdes(adev, vm, true);
++	r = amdgpu_vm_update_pdes(&ctx, true);
+ 
+ error_unlock:
+ 	drm_exec_fini(&exec);
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+index 6a5448c24554..904948ba6a77 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+@@ -564,8 +564,7 @@ int amdgpu_vm_validate(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 		       int (*callback)(void *p, struct amdgpu_bo *bo),
+ 		       void *param);
+ void amdgpu_vm_flush(struct amdgpu_ring *ring, struct amdgpu_job *job, bool need_pipe_sync);
+-int amdgpu_vm_update_pdes(struct amdgpu_device *adev,
+-			  struct amdgpu_vm *vm, bool immediate);
++int amdgpu_vm_update_pdes(struct amdgpu_vm_update_ctx *ctx, bool immediate);
+ int amdgpu_vm_clear_freed(struct amdgpu_vm_update_ctx *ctx,
+ 			  struct dma_fence **fence);
+ int amdgpu_vm_delayed_free(struct amdgpu_device *adev, struct amdgpu_vm *vm);
+diff --git a/drivers/gpu/drm/amd/amdgpu/mes_v12_1.c b/drivers/gpu/drm/amd/amdgpu/mes_v12_1.c
+index 1ef4e78fe07f..2df1cfa7ebe5 100644
+--- a/drivers/gpu/drm/amd/amdgpu/mes_v12_1.c
++++ b/drivers/gpu/drm/amd/amdgpu/mes_v12_1.c
+@@ -2058,7 +2058,7 @@ static int mes_v12_1_map_test_bo(struct amdgpu_device *adev,
+ 	}
+ 	amdgpu_sync_fence(&sync, (*bo_va)->last_pt_update, GFP_KERNEL);
+ 
+-	r = amdgpu_vm_update_pdes(adev, vm, false);
++	r = amdgpu_vm_update_pdes(&update_ctx, false);
+ 	if (r) {
+ 		dev_err(adev->dev, "failed to update pdes on meta data\n");
+ 		goto error;
+diff --git a/drivers/gpu/drm/amd/amdkfd/kfd_svm.c b/drivers/gpu/drm/amd/amdkfd/kfd_svm.c
+index e7e77fef4ea7..ea2088760727 100644
+--- a/drivers/gpu/drm/amd/amdkfd/kfd_svm.c
++++ b/drivers/gpu/drm/amd/amdkfd/kfd_svm.c
+@@ -1514,7 +1514,7 @@ svm_range_map_to_gpu(struct kfd_process_device *pdd, struct svm_range *prange,
+ 		last_start = prange->start + i + 1;
+ 	}
+ 
+-	r = amdgpu_vm_update_pdes(adev, vm, false);
++	r = amdgpu_vm_update_pdes(&ctx, false);
+ 	if (r) {
+ 		pr_debug("failed %d to update directories 0x%lx\n", r,
+ 			 prange->start);
+-- 
+2.55.0
+

@@ -1,0 +1,49 @@
+From 647ec866269ebe02e1a48a27749d6b27528df31a Mon Sep 17 00:00:00 2001
+From: Chin-Yen Lee <timlee@realtek.com>
+Date: Thu, 25 Jun 2026 14:15:43 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: wow: use MLD address in WoWLAN
+ ARP replies for MLO stations
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Currently, WoWLAN ARP replies for MLO stations use the link address in
+the ARP hardware address fields.
+
+As a result, peers may learn the link address from the ARP reply and
+use it as the destination address for subsequent traffic. Some APs may
+not forward frames addressed to the link address, causing connectivity
+issues.
+
+Use the MLD address instead when generating WoWLAN ARP replies so peers
+learn the correct address for MLO stations.
+
+Signed-off-by: Chin-Yen Lee <timlee@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260625061545.44808-9-pkshih@realtek.com
+(cherry picked from commit 76edcedda6437647ecd09b4b47593990a003b07a)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/fw.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.c b/drivers/net/wireless/realtek/rtw89/fw.c
+index 4f8aedd24aaf..078a8c70a7dc 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.c
++++ b/drivers/net/wireless/realtek/rtw89/fw.c
+@@ -2984,9 +2984,9 @@ static struct sk_buff *rtw89_arp_response_get(struct rtw89_dev *rtwdev,
+ 	arp_hdr->ar_pln = 4;
+ 	arp_hdr->ar_op = htons(ARPOP_REPLY);
+ 
+-	ether_addr_copy(arp_skb->sender_hw, rtwvif_link->mac_addr);
++	ether_addr_copy(arp_skb->sender_hw, rtwvif->mac_addr);
+ 	arp_skb->sender_ip = rtwvif->ip_addr;
+-	ether_addr_copy(arp_skb->target_hw, rtwvif_link->mac_addr);
++	ether_addr_copy(arp_skb->target_hw, rtwvif->mac_addr);
+ 	arp_skb->target_ip = rtwvif->ip_addr;
+ 
+ 	return skb;
+-- 
+2.55.0
+

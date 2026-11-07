@@ -1,0 +1,131 @@
+From b128200243d3ee26bd600df0167a82f04c85ed21 Mon Sep 17 00:00:00 2001
+From: Chih-Kang Chang <gary.chang@realtek.com>
+Date: Fri, 17 Jul 2026 14:19:05 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: rfk: update TXIQK H2C command
+ format to v1
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+TX IQK is a RF calibration, the v1 format adds a field for the thermal
+re-calibration parameter for RTL8922D after FW 0.35.113.0. Update the
+format accordingly.
+
+Signed-off-by: Chih-Kang Chang <gary.chang@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260717061910.54466-5-pkshih@realtek.com
+(cherry picked from commit e92d5b02b4563bb1ad6cd34acfa06e5b8f7c92dc)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/core.h |  1 +
+ drivers/net/wireless/realtek/rtw89/fw.c   | 35 ++++++++++++++++-------
+ drivers/net/wireless/realtek/rtw89/fw.h   |  7 ++++-
+ 3 files changed, 32 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index 6f9ade9031bb..11beb5f5dcf0 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -5599,6 +5599,7 @@ enum rtw89_fw_feature {
+ 	),
+ 	RTW89_FW_FEATURE_RFK_RXDCK_V0,
+ 	RTW89_FW_FEATURE_RFK_IQK_V0,
++	RTW89_FW_FEATURE_RFK_TXIQK_V0,
+ 	RTW89_FW_FEATURE_NO_WOW_CPU_IO_RX,
+ 	RTW89_FW_FEATURE_NOTIFY_AP_INFO,
+ 	RTW89_FW_FEATURE_CH_INFO_BE_V0,
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.c b/drivers/net/wireless/realtek/rtw89/fw.c
+index b52754c7e9af..9a294795ce78 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.c
++++ b/drivers/net/wireless/realtek/rtw89/fw.c
+@@ -948,6 +948,7 @@ static const struct __fw_feat_cfg fw_feat_tbl[] = {
+ 	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 104, 0, TX_HISTORY_V1),
+ 	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 108, 0, SIM_SER_L0L1_BY_HALT_H2C),
+ 	__CFG_FW_FEAT(RTL8922D, lt, 0, 35, 109, 1, SCAN_OFFLOAD_BE_V1),
++	__CFG_FW_FEAT(RTL8922D, lt, 0, 35, 113, 0, RFK_TXIQK_V0),
+ };
+ 
+ static void rtw89_fw_iterate_feature_cfg(struct rtw89_fw_info *fw,
+@@ -8466,29 +8467,43 @@ fail:
+ int rtw89_fw_h2c_rf_txiqk(struct rtw89_dev *rtwdev, enum rtw89_phy_idx phy_idx,
+ 			  const struct rtw89_chan *chan)
+ {
++	struct rtw89_h2c_rf_txiqk_v0 *h2c_v0;
+ 	struct rtw89_h2c_rf_txiqk *h2c;
+ 	u32 len = sizeof(*h2c);
+ 	struct sk_buff *skb;
++	u8 ver = U8_MAX;
+ 	int ret;
+ 
++	if (RTW89_CHK_FW_FEATURE(RFK_TXIQK_V0, &rtwdev->fw)) {
++		len = sizeof(*h2c_v0);
++		ver = 0;
++	}
++
+ 	skb = rtw89_fw_h2c_alloc_skb_with_hdr(rtwdev, len);
+ 	if (!skb) {
+ 		rtw89_err(rtwdev, "failed to alloc skb for h2c RF TXIQK\n");
+ 		return -ENOMEM;
+ 	}
+ 	skb_put(skb, len);
+-	h2c = (struct rtw89_h2c_rf_txiqk *)skb->data;
++	h2c_v0 = (struct rtw89_h2c_rf_txiqk_v0 *)skb->data;
++
++	h2c_v0->len = len;
++	h2c_v0->phy = phy_idx;
++	h2c_v0->txiqk_enable = true;
++	h2c_v0->is_wb_txiqk = true;
++	h2c_v0->kpath = RF_AB;
++	h2c_v0->cur_band = chan->band_type;
++	h2c_v0->cur_bw = chan->band_width;
++	h2c_v0->cur_ch = chan->channel;
++	h2c_v0->txiqk_dbg_en = rtw89_debug_is_enabled(rtwdev, RTW89_DBG_RFK);
+ 
+-	h2c->len = len;
+-	h2c->phy = phy_idx;
+-	h2c->txiqk_enable = true;
+-	h2c->is_wb_txiqk = true;
+-	h2c->kpath = RF_AB;
+-	h2c->cur_band = chan->band_type;
+-	h2c->cur_bw = chan->band_width;
+-	h2c->cur_ch = chan->channel;
+-	h2c->txiqk_dbg_en = rtw89_debug_is_enabled(rtwdev, RTW89_DBG_RFK);
++	if (ver == 0)
++		goto hdr;
++
++	h2c = (struct rtw89_h2c_rf_txiqk *)skb->data;
++	h2c->is_ther_rek = false;
+ 
++hdr:
+ 	rtw89_h2c_pkt_set_hdr(rtwdev, skb, FWCMD_TYPE_H2C,
+ 			      H2C_CAT_OUTSRC, H2C_CL_OUTSRC_RF_FW_RFK,
+ 			      H2C_FUNC_RFK_TXIQK_OFFOAD, 0, 0, len);
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.h b/drivers/net/wireless/realtek/rtw89/fw.h
+index a1aab8293c14..2654f8fd0e51 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.h
++++ b/drivers/net/wireless/realtek/rtw89/fw.h
+@@ -5042,7 +5042,7 @@ struct rtw89_h2c_rf_rxdck {
+ 	u8 is_chl_k;
+ } __packed;
+ 
+-struct rtw89_h2c_rf_txiqk {
++struct rtw89_h2c_rf_txiqk_v0 {
+ 	u8 len;
+ 	u8 phy;
+ 	u8 txiqk_enable;
+@@ -5054,6 +5054,11 @@ struct rtw89_h2c_rf_txiqk {
+ 	u8 txiqk_dbg_en;
+ } __packed;
+ 
++struct rtw89_h2c_rf_txiqk {
++	struct rtw89_h2c_rf_txiqk_v0 v0;
++	u8 is_ther_rek;
++} __packed;
++
+ struct rtw89_h2c_rf_cim3k {
+ 	u8 len;
+ 	u8 phy;
+-- 
+2.55.0
+

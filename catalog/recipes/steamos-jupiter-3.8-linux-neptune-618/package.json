@@ -1,0 +1,19 @@
+{
+  "FILENAME": "linux-neptune-618-headers-6.18.46.valve1-1-x86_64.pkg.tar.zst",
+  "NAME": "linux-neptune-618-headers",
+  "BASE": "linux-neptune-618",
+  "VERSION": "6.18.46.valve1-1",
+  "DESC": "Headers and scripts for building modules for the Linux kernel",
+  "CSIZE": "40324174",
+  "ISIZE": "152444226",
+  "MD5SUM": "cb091bcef78ff73d4c1dfc23124a659c",
+  "SHA256SUM": "deaf114dd034dd8ff08a09b1afb581271644d2252c2dd4ff31b18eb4a6c366e1",
+  "PGPSIG": "iQIzBAABCgAdFiEEiJtevd1QWmg2IZANrx0hme8KPM8FAmqQ3cEACgkQrx0hme8KPM/YgBAA34PVNhPzJ6BKsIIvqJ/IpRnsxTiy1GUhVHCaTEq2sqRqySj8Z2GyJxiIEkt+1p3ALDefBPXwXQDiPecwEp2MdIegQTR5FGhFq1sDSun3sDKqVEDKWU7PW3cpyEcspSQnlzCFSSPJihd+VH4KXUBOtGSdCpr8kYT0Fdb0WhFexBrow/1E1yFgSwn35MUJaf8Dy+c3eMEAjy+5Qf0jJIc34TOSFaCFRTW9UCdTG/l3y9iy6QiF+ufqQNVW0k+wraCvpbChX72LwzS1m/uYZhnOFAbtRY6ZMd7N2u49eQXb6J0ENfKilRN1RZ5Wg1DcQ/rCG7i7e47CKrJ5bvW7QXjauJ2sZha4Un6EQ18yujzXWvYzrgfp9oA6jqxv4NVOrC3Lo+34kcARZEFQqgZT+m37UcBbcOkCVFOkC9KOSI/NhFCoFYX5wgPo18XS/C+h6w1XsCx5XrpJYLPSM8BIrhMv7KGFgK8fXvLu3MU0CSkls0kkDqqmmPZEeFlcE0kavVspaHZU/1vaJ9boM2gfg8aKc3a8Ugh/447cXDCDZW/8WahrBFV39qLPfNqDZqiN08sOI3KnzP47HNpkmnV+57B/CZaPJubp/uvtIPL4U3goSovp7mxzEgi8X+HNt3WPjdmby+E+p9gdcmoG/U3En3wCcAH9eo6/C8SDpSaw02f5jo4=",
+  "URL": "https://gitlab.steamos.cloud/jupiter/linux-integration/-/tree/6.18.46-valve1",
+  "LICENSE": "GPL-2.0-only",
+  "ARCH": "x86_64",
+  "BUILDDATE": "1787878070",
+  "PACKAGER": "GitLab CI Package Builder <ci-package-builder-1@steamos.cloud>",
+  "DEPENDS": "pahole",
+  "MAKEDEPENDS": "bc\ncpio\ngettext\nlibelf\npahole\nperl\npython\ntar\nxz\ngit\nopenssh"
+}

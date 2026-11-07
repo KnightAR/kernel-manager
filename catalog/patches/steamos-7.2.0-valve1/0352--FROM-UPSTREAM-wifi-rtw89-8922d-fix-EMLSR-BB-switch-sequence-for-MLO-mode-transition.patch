@@ -1,0 +1,132 @@
+From 47c9f9482ab85d461abb49e75398619d9e65cb3f Mon Sep 17 00:00:00 2001
+From: Eric Huang <echuang@realtek.com>
+Date: Tue, 7 Jul 2026 17:10:44 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: 8922d: fix EMLSR BB switch
+ sequence for MLO mode transition
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Assert BB reset in the intermediate "switch to 1+1" step of the EMLSR
+switch sequence for all three MLO mode transitions by updating the
+B_EMLSR_SWITCH_BE4 intermediate value from 0xAFFF to 0x3BAB.
+
+Without the BB reset in this step, the baseband can be left in an
+inconsistent state before settling into the final MLO configuration.
+
+Signed-off-by: Eric Huang <echuang@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260707091056.42771-4-pkshih@realtek.com
+(cherry picked from commit 8da4883c81ae69e3abc86328b256c828748d035f)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/reg.h      |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8922d.c | 45 ++++++++-----------
+ 2 files changed, 20 insertions(+), 26 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/reg.h b/drivers/net/wireless/realtek/rtw89/reg.h
+index 1ff788c24eec..3908f9729736 100644
+--- a/drivers/net/wireless/realtek/rtw89/reg.h
++++ b/drivers/net/wireless/realtek/rtw89/reg.h
+@@ -10782,6 +10782,7 @@
+ #define B_SYS_DBCC_24G_BAND_SEL_BE4 BIT(1)
+ #define R_EMLSR_SWITCH_BE4 0x20044
+ #define B_EMLSR_SWITCH_BE4 GENMASK(27, 12)
++#define B_EMLSR_CLR_FORCE_BE4 GENMASK(20, 19)
+ #define B_EMLSR_BB_CLK_BE4 GENMASK(31, 30)
+ #define R_CHINFO_SEG_BE4 0x200B4
+ #define B_CHINFO_SEG_LEN_BE4 GENMASK(12, 10)
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922d.c b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+index 805dd96e61e6..212917db7154 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922d.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+@@ -2309,17 +2309,16 @@ static void rtw8922d_digital_pwr_comp(struct rtw89_dev *rtwdev,
+ 	}
+ }
+ 
+-static int rtw8922d_ctrl_mlo(struct rtw89_dev *rtwdev, enum rtw89_mlo_dbcc_mode mode,
+-			     bool pwr_comp)
++static void rtw8922d_ctrl_mlo_mode_core(struct rtw89_dev *rtwdev,
++					enum rtw89_mlo_dbcc_mode mode)
+ {
+-	u32 reg0, reg1;
+-	u8 cck_phy_idx;
++	rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_CLR_FORCE_BE4, 0x3);
+ 
+ 	if (mode == MLO_2_PLUS_0_1RF) {
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xBBBB);
+ 		udelay(1);
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_BB_CLK_BE4, 0x3);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xAFFF);
++		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0x3BAB);
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xEBAD);
+ 		udelay(1);
+ 
+@@ -2329,7 +2328,7 @@ static int rtw8922d_ctrl_mlo(struct rtw89_dev *rtwdev, enum rtw89_mlo_dbcc_mode
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xBBBB);
+ 		udelay(1);
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_BB_CLK_BE4, 0x3);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xAFFF);
++		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0x3BAB);
+ 		udelay(1);
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xEFFF);
+ 
+@@ -2339,7 +2338,7 @@ static int rtw8922d_ctrl_mlo(struct rtw89_dev *rtwdev, enum rtw89_mlo_dbcc_mode
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xBBBB);
+ 		udelay(1);
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_BB_CLK_BE4, 0x3);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xAFFF);
++		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0x3BAB);
+ 		udelay(1);
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_BB_CLK_BE4, 0x0);
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0x3AAB);
+@@ -2351,6 +2350,15 @@ static int rtw8922d_ctrl_mlo(struct rtw89_dev *rtwdev, enum rtw89_mlo_dbcc_mode
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_BB_CLK_BE4, 0x0);
+ 		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0x0);
+ 	}
++}
++
++static int rtw8922d_ctrl_mlo(struct rtw89_dev *rtwdev, enum rtw89_mlo_dbcc_mode mode,
++			     bool pwr_comp)
++{
++	u32 reg0, reg1;
++	u8 cck_phy_idx;
++
++	rtw8922d_ctrl_mlo_mode_core(rtwdev, mode);
+ 
+ 	if (pwr_comp)
+ 		rtw8922d_digital_pwr_comp(rtwdev, RTW89_PHY_0);
+@@ -2474,25 +2482,10 @@ static void rtw8922d_pre_set_channel_bb(struct rtw89_dev *rtwdev,
+ 
+ 	rtw89_phy_write32_mask(rtwdev, R_SYS_DBCC_BE4, B_SYS_DBCC_BE4, 0x0);
+ 
+-	if (phy_idx == RTW89_PHY_0) {
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xBBBB);
+-		fsleep(1);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_BB_CLK_BE4, 0x3);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xAFFF);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xEBAD);
+-		fsleep(1);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_BB_CLK_BE4, 0x0);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xEAAD);
+-	} else {
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xBBBB);
+-		fsleep(1);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_BB_CLK_BE4, 0x3);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xAFFF);
+-		fsleep(1);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xEFFF);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_BB_CLK_BE4, 0x0);
+-		rtw89_phy_write32_mask(rtwdev, R_EMLSR_SWITCH_BE4, B_EMLSR_SWITCH_BE4, 0xEEFF);
+-	}
++	if (phy_idx == RTW89_PHY_0)
++		rtw8922d_ctrl_mlo_mode_core(rtwdev, MLO_2_PLUS_0_1RF);
++	else
++		rtw8922d_ctrl_mlo_mode_core(rtwdev, MLO_0_PLUS_2_1RF);
+ 
+ 	fsleep(1);
+ }
+-- 
+2.55.0
+

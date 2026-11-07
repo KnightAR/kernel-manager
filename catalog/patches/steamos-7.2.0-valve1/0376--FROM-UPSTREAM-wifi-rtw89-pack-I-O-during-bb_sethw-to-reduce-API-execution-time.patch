@@ -1,0 +1,44 @@
+From 3ff1a1c793ae72ade7eb354ae4dda0b8da6debbf Mon Sep 17 00:00:00 2001
+From: Eric Huang <echuang@realtek.com>
+Date: Sun, 12 Jul 2026 11:44:59 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: pack I/O during bb_sethw to
+ reduce API execution time
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Wrap rtw89_chip_bb_sethw() with rtw89_io_pack/unpack so all register
+writes during baseband hardware initialization are batched into a single
+bus transaction. This reduces API execution time from ~11000 us to
+~4000 us on affected platforms.
+
+Signed-off-by: Eric Huang <echuang@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260712034506.53209-2-pkshih@realtek.com
+(cherry picked from commit b45b22bbe9d51493e8d4b5466d3dc0c7b7e26278)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/core.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index c323f1f3466d..113a3799bfd3 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -8216,8 +8216,12 @@ static inline void rtw89_chip_bb_sethw(struct rtw89_dev *rtwdev)
+ {
+ 	const struct rtw89_chip_info *chip = rtwdev->chip;
+ 
++	rtw89_io_pack(rtwdev);
++
+ 	if (chip->ops->bb_sethw)
+ 		chip->ops->bb_sethw(rtwdev);
++
++	rtw89_io_unpack(rtwdev);
+ }
+ 
+ static inline void rtw89_chip_rfk_init(struct rtw89_dev *rtwdev)
+-- 
+2.55.0
+

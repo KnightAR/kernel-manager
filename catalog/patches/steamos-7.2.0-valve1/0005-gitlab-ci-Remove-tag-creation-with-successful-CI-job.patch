@@ -1,0 +1,33 @@
+From 689305779228490f5c9f3fba6de54b5f944549f2 Mon Sep 17 00:00:00 2001
+From: Lakshmipathi <lakshmipathi.ganapathi@collabora.com>
+Date: Mon, 5 Apr 2021 07:12:12 +0000
+Subject: [PATCH] gitlab-ci: Remove tag creation with successful CI job
+
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 9 ++-------
+ 1 file changed, 2 insertions(+), 7 deletions(-)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 6edafd78701d..a019eeb4fb17 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -39,13 +39,8 @@ kernel build:
+ 
+      # notify
+      - test -f "fail.txt" && exit 1
+-     - echo "All tests passed..setup tags"
+-     - git config --global user.email ${GIT_AUTHOR_EMAIL}
+-     - git config --global user.name ${GIT_AUTHOR_NAME}
+-     - sed -i -r 's/(url = .*):(.*)@(.*)/\1:'${LINUX_INTEGRATION_TOKEN}'@\3/' .git/config
+-     - git tag ${TAG}
+-     - git tag -f latest
+-     - git push -o ci.skip origin -f --tags
++     - echo "All tests passed."
++     
+   artifacts:
+     expire_in: 1 week
+     when: always
+-- 
+2.55.0
+

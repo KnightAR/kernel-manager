@@ -1,0 +1,336 @@
+From ce8246a8d4ebcaecf4d91ba3dba39342d74be861 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <nat@pixelcluster.dev>
+Date: Wed, 12 Aug 2026 14:20:43 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/amdgpu: Add drm_exec to
+ amdgpu_vm_update_ctx and use it for PT ops
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Allocating a page table may need to evict other memory. To make sure
+that eviction (and thus, PT allocation) has a chance to succceed, pass
+a drm_exec object via amdgpu_vm_update_ctx to the functions allocating
+a PT.
+
+Signed-off-by: Natalie Vock <nat@pixelcluster.dev>
+[nfraprado: fixed conflicts]
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c   | 140 +++++++++++-----------
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c    |   7 +-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h    |   8 +-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm_pt.c |  32 +++--
+ 4 files changed, 99 insertions(+), 88 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
+index b5f5a6989d81..c963c8f46db8 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
+@@ -930,6 +930,7 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
+ 
+ 	drm_exec_init(&exec, DRM_EXEC_INTERRUPTIBLE_WAIT |
+ 		      DRM_EXEC_IGNORE_DUPLICATES, 0);
++	update_ctx.exec = &exec;
+ 	drm_exec_until_all_locked(&exec) {
+ 		if (gobj) {
+ 			r = drm_exec_lock_obj(&exec, gobj);
+@@ -942,85 +943,86 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
+ 		drm_exec_retry_on_contention(&exec);
+ 		if (unlikely(r))
+ 			goto error;
+-	}
+ 
+-	/* Resolve the BO-VA mapping for this VM/BO combination. */
+-	if (abo) {
+-		bo_va = amdgpu_vm_bo_find(&fpriv->vm, abo);
+-		if (!bo_va) {
+-			r = -ENOENT;
+-			goto error;
++		/* Resolve the BO-VA mapping for this VM/BO combination. */
++		if (abo) {
++			bo_va = amdgpu_vm_bo_find(&fpriv->vm, abo);
++			if (!bo_va) {
++				r = -ENOENT;
++				goto error;
++			}
++		} else if (args->operation != AMDGPU_VA_OP_CLEAR) {
++			bo_va = fpriv->prt_va;
++		} else {
++			bo_va = NULL;
+ 		}
+-	} else if (args->operation != AMDGPU_VA_OP_CLEAR) {
+-		bo_va = fpriv->prt_va;
+-	} else {
+-		bo_va = NULL;
+-	}
+-
+-	/*
+-	 * Prepare the timeline syncobj node if the user requested a VM
+-	 * timeline update. This only allocates/looks up the syncobj and
+-	 * chain node; the actual fence is attached later.
+-	 */
+-	r = amdgpu_gem_update_timeline_node(filp,
+-					    args->vm_timeline_syncobj_out,
+-					    args->vm_timeline_point,
+-					    &timeline_syncobj,
+-					    &timeline_chain);
+-	if (r)
+-		goto error;
+ 
+-	switch (args->operation) {
+-	case AMDGPU_VA_OP_MAP:
+-		r = amdgpu_vm_bo_map(&update_ctx, bo_va, args->va_address,
+-				     args->offset_in_bo, args->map_size,
+-				     args->flags);
+-		break;
+-	case AMDGPU_VA_OP_UNMAP:
+-		r = amdgpu_vm_bo_unmap(&update_ctx, bo_va, args->va_address);
+-		break;
++		/*
++		 * Prepare the timeline syncobj node if the user requested a VM
++		 * timeline update. This only allocates/looks up the syncobj and
++		 * chain node; the actual fence is attached later.
++		 */
++		r = amdgpu_gem_update_timeline_node(
++			filp, args->vm_timeline_syncobj_out,
++			args->vm_timeline_point, &timeline_syncobj,
++			&timeline_chain);
++		if (r)
++			goto error;
+ 
+-	case AMDGPU_VA_OP_CLEAR:
+-		r = amdgpu_vm_bo_clear_mappings(&update_ctx, args->va_address,
+-						args->map_size);
+-		break;
+-	case AMDGPU_VA_OP_REPLACE:
+-		r = amdgpu_vm_bo_replace_map(&update_ctx, bo_va,
++		switch (args->operation) {
++		case AMDGPU_VA_OP_MAP:
++			r = amdgpu_vm_bo_map(&update_ctx, bo_va,
+ 					     args->va_address,
+ 					     args->offset_in_bo, args->map_size,
+ 					     args->flags);
+-		break;
+-	default:
+-		break;
+-	}
++			break;
++		case AMDGPU_VA_OP_UNMAP:
++			r = amdgpu_vm_bo_unmap(&update_ctx, bo_va,
++					       args->va_address);
++			break;
+ 
+-	/*
+-	 * Once the VA operation is done, update the VM and obtain the fence
+-	 * that represents the last relevant update for this mapping. This
+-	 * fence can then be exported to the user-visible VM timeline.
+-	 */
+-	if (!r && !(args->flags & AMDGPU_VM_DELAY_UPDATE) &&
+-	    (!adev->debug_vm || timeline_syncobj)) {
+-		struct dma_fence *fence;
+-
+-		fence = amdgpu_gem_va_update_vm(&update_ctx, bo_va,
+-						args->operation);
+-		if (timeline_syncobj) {
+-			if (!args->vm_timeline_point) {
+-				/* Replace the existing fence when no point is given. */
+-				drm_syncobj_replace_fence(timeline_syncobj,
+-							  fence);
+-			} else {
+-				/* Attach the last-update fence at a specific point. */
+-				drm_syncobj_add_point(timeline_syncobj,
+-						      timeline_chain,
+-						      fence,
+-						      args->vm_timeline_point);
+-				timeline_chain = NULL;
+-			}
++		case AMDGPU_VA_OP_CLEAR:
++			r = amdgpu_vm_bo_clear_mappings(
++				&update_ctx, args->va_address, args->map_size);
++			break;
++		case AMDGPU_VA_OP_REPLACE:
++			r = amdgpu_vm_bo_replace_map(&update_ctx, bo_va,
++						     args->va_address,
++						     args->offset_in_bo,
++						     args->map_size,
++						     args->flags);
++			break;
++		default:
++			break;
+ 		}
+-		dma_fence_put(fence);
+ 
++		/*
++		 * Once the VA operation is done, update the VM and obtain the fence
++		 * that represents the last relevant update for this mapping. This
++		 * fence can then be exported to the user-visible VM timeline.
++		 */
++		if (!r && !(args->flags & AMDGPU_VM_DELAY_UPDATE) &&
++		    (!adev->debug_vm || timeline_syncobj)) {
++			struct dma_fence *fence;
++
++			fence = amdgpu_gem_va_update_vm(&update_ctx, bo_va,
++							args->operation);
++
++			if (timeline_syncobj) {
++				if (!args->vm_timeline_point) {
++					/* Replace the existing fence when no point is given. */
++					drm_syncobj_replace_fence(
++						timeline_syncobj, fence);
++				} else {
++					/* Attach the last-update fence at a specific point. */
++					drm_syncobj_add_point(
++						timeline_syncobj,
++						timeline_chain, fence,
++						args->vm_timeline_point);
++				}
++			}
++			dma_fence_put(fence);
++		}
+ 	}
+ 
+ error:
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+index a4df06ad87bf..e3ed14074918 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+@@ -1699,11 +1699,10 @@ int amdgpu_vm_clear_freed(struct amdgpu_vm_update_ctx *ctx,
+ 	while (!list_empty(&ctx->freed)) {
+ 		mapping = list_first_entry(&ctx->freed,
+ 					   struct amdgpu_bo_va_mapping, list);
+-		list_del(&mapping->list);
+-
+ 		r = amdgpu_vm_update_range(ctx, false, false, true, false,
+ 					   mapping->start, mapping->last, 0, 0,
+ 					   0, NULL, NULL, &f);
++		list_del(&mapping->list);
+ 		amdgpu_vm_free_mapping(ctx->adev, ctx->vm, mapping, f);
+ 		if (r) {
+ 			dma_fence_put(f);
+@@ -2780,8 +2779,8 @@ int amdgpu_vm_init(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 	vm->evicting = false;
+ 	vm->tlb_fence_context = dma_fence_context_alloc(1);
+ 
+-	r = amdgpu_vm_pt_create(adev, vm, adev->vm_manager.root_level, false,
+-				&root, xcp_id);
++	r = amdgpu_vm_pt_create(&ctx, adev->vm_manager.root_level, false, &root,
++				xcp_id);
+ 	if (r)
+ 		goto error_free_delayed;
+ 
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+index a2d7ab500e83..e554a86f22a5 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+@@ -282,6 +282,10 @@ struct amdgpu_vm_update_ctx {
+ 	 * @vm: target VM of the update
+ 	 */
+ 	struct amdgpu_vm *vm;
++	/**
++	 * @exec: exec used to acquire locks
++	 */
++	struct drm_exec *exec;
+ 
+ 	/**
+ 	 * @freed: A list of mappings that are freed and pending PT/PD updates during
+@@ -647,8 +651,8 @@ void amdgpu_vm_get_memory(struct amdgpu_vm *vm,
+ 
+ int amdgpu_vm_pt_clear(struct amdgpu_vm_update_ctx *ctx,
+ 		       struct amdgpu_bo_vm *vmbo, bool immediate);
+-int amdgpu_vm_pt_create(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+-			int level, bool immediate, struct amdgpu_bo_vm **vmbo,
++int amdgpu_vm_pt_create(struct amdgpu_vm_update_ctx *ctx, int level,
++			bool immediate, struct amdgpu_bo_vm **vmbo,
+ 			int32_t xcp_id);
+ void amdgpu_vm_pt_free_root(struct amdgpu_device *adev, struct amdgpu_vm *vm);
+ 
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_pt.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_pt.c
+index 64fb6ba0a55c..b994150cbf33 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_pt.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_pt.c
+@@ -362,7 +362,11 @@ int amdgpu_vm_pt_clear(struct amdgpu_vm_update_ctx *update_ctx,
+ 		       struct amdgpu_bo_vm *vmbo, bool immediate)
+ {
+ 	unsigned int level = update_ctx->adev->vm_manager.root_level;
+-	struct ttm_operation_ctx ctx = { true, false };
++	struct ttm_operation_ctx ctx = {
++		.interruptible = true,
++		.no_wait_gpu = false,
++		.exec = update_ctx->exec,
++	};
+ 	struct amdgpu_vm_update_params params;
+ 	struct amdgpu_bo *ancestor = &vmbo->bo;
+ 	unsigned int entries;
+@@ -437,8 +441,8 @@ exit:
+  * @vmbo: pointer to the buffer object pointer
+  * @xcp_id: GPU partition id
+  */
+-int amdgpu_vm_pt_create(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+-			int level, bool immediate, struct amdgpu_bo_vm **vmbo,
++int amdgpu_vm_pt_create(struct amdgpu_vm_update_ctx *ctx, int level,
++			bool immediate, struct amdgpu_bo_vm **vmbo,
+ 			int32_t xcp_id)
+ {
+ 	struct amdgpu_bo_param bp;
+@@ -446,36 +450,38 @@ int amdgpu_vm_pt_create(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 
+ 	memset(&bp, 0, sizeof(bp));
+ 
+-	bp.size = amdgpu_vm_pt_size(adev, level);
++	bp.size = amdgpu_vm_pt_size(ctx->adev, level);
+ 	bp.byte_align = AMDGPU_GPU_PAGE_SIZE;
+ 
+-	if (!adev->gmc.is_app_apu)
++	if (!ctx->adev->gmc.is_app_apu)
+ 		bp.domain = AMDGPU_GEM_DOMAIN_VRAM;
+ 	else
+ 		bp.domain = AMDGPU_GEM_DOMAIN_GTT;
+ 
+-	bp.domain = amdgpu_bo_get_preferred_domain(adev, bp.domain);
++	bp.domain = amdgpu_bo_get_preferred_domain(ctx->adev, bp.domain);
+ 	bp.flags = AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS |
+ 		AMDGPU_GEM_CREATE_CPU_GTT_USWC;
+ 
+ 	if (level < AMDGPU_VM_PTB)
+-		num_entries = amdgpu_vm_pt_num_entries(adev, level);
++		num_entries = amdgpu_vm_pt_num_entries(ctx->adev, level);
+ 	else
+ 		num_entries = 0;
+ 
+ 	bp.bo_ptr_size = struct_size((*vmbo), entries, num_entries);
+ 
+-	if (vm->use_cpu_for_update)
++	if (ctx->vm->use_cpu_for_update)
+ 		bp.flags |= AMDGPU_GEM_CREATE_CPU_ACCESS_REQUIRED;
+ 
+ 	bp.type = ttm_bo_type_kernel;
+ 	bp.no_wait_gpu = immediate;
+ 	bp.xcp_id_plus1 = xcp_id + 1;
+ 
+-	if (vm->root.bo)
+-		bp.resv = vm->root.bo->tbo.base.resv;
++	if (ctx->vm->root.bo)
++		bp.resv = ctx->vm->root.bo->tbo.base.resv;
+ 
+-	return amdgpu_bo_create_vm(adev, &bp, vmbo);
++	bp.exec = ctx->exec;
++
++	return amdgpu_bo_create_vm(ctx->adev, &bp, vmbo);
+ }
+ 
+ /**
+@@ -505,8 +511,8 @@ static int amdgpu_vm_pt_alloc(struct amdgpu_vm_update_ctx *ctx,
+ 		return 0;
+ 
+ 	amdgpu_vm_eviction_unlock(ctx->vm);
+-	r = amdgpu_vm_pt_create(ctx->adev, ctx->vm, cursor->level, immediate,
+-				&pt, ctx->vm->root.bo->xcp_id);
++	r = amdgpu_vm_pt_create(ctx, cursor->level, immediate, &pt,
++				ctx->vm->root.bo->xcp_id);
+ 	amdgpu_vm_eviction_lock(ctx->vm);
+ 	if (r)
+ 		return r;
+-- 
+2.55.0
+

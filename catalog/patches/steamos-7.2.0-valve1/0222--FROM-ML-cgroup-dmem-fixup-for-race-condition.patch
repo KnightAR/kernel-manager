@@ -1,0 +1,49 @@
+From 194fc8aac65bd84e96f3ce7833c005d884480e1d Mon Sep 17 00:00:00 2001
+From: Thadeu Lima de Souza Cascardo <cascardo@igalia.com>
+Date: Tue, 26 May 2026 12:28:49 -0300
+Subject: [PATCH] [FROM-ML] cgroup/dmem: fixup for race condition
+
+cgroup_e_css must be called in RCU read context. Besides, a reference to
+ancestor_css must be got as later on, dmem_cgroup_pool_state_put will call
+css_put.
+
+Signed-off-by: Thadeu Lima de Souza Cascardo <cascardo@igalia.com>
+Link: https://lore.kernel.org/dri-devel/ahW8MY4XBox_nsmB@quatroqueijos.cascardo.eti.br/
+Signed-off-by: Matthew Schwartz <matthew.schwartz@linux.dev>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ kernel/cgroup/dmem.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/kernel/cgroup/dmem.c b/kernel/cgroup/dmem.c
+index 1ebb845e8669..2c7ba6a36446 100644
+--- a/kernel/cgroup/dmem.c
++++ b/kernel/cgroup/dmem.c
+@@ -771,6 +771,7 @@ struct dmem_cgroup_pool_state *dmem_cgroup_get_common_ancestor(struct dmem_cgrou
+ {
+ 	struct cgroup *ancestor_cgroup;
+ 	struct cgroup_subsys_state *ancestor_css;
++	struct dmem_cgroup_pool_state *pool = NULL;
+ 
+ 	if (!a || !b)
+ 		return NULL;
+@@ -779,9 +780,15 @@ struct dmem_cgroup_pool_state *dmem_cgroup_get_common_ancestor(struct dmem_cgrou
+ 	if (!ancestor_cgroup)
+ 		return NULL;
+ 
++	rcu_read_lock();
+ 	ancestor_css = cgroup_e_css(ancestor_cgroup, &dmem_cgrp_subsys);
++	if (css_tryget(ancestor_css))
++		pool = get_cg_pool_unlocked(css_to_dmemcs(ancestor_css), a->region);
++	if (!pool)
++		css_put(ancestor_css);
++	rcu_read_unlock();
+ 
+-	return get_cg_pool_unlocked(css_to_dmemcs(ancestor_css), a->region);
++	return pool;
+ }
+ EXPORT_SYMBOL_GPL(dmem_cgroup_get_common_ancestor);
+ 
+-- 
+2.55.0
+

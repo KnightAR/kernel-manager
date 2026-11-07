@@ -1,0 +1,47 @@
+From 0db5ec3ef9dc996e1cf9e1a2b94b4b0f849f7c01 Mon Sep 17 00:00:00 2001
+From: GuoHan Zhao <zhaoguohan@kylinos.cn>
+Date: Wed, 15 Jul 2026 14:08:13 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: wow: fix unsupported cipher
+ debug messages
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Correct two WoWLAN debug messages to say "unsupported cipher".
+
+Signed-off-by: GuoHan Zhao <zhaoguohan@kylinos.cn>
+Acked-by: Ping-Ke Shih <pkshih@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260715060813.476245-1-zhaoguohan@kylinos.cn
+(cherry picked from commit 73aecc221e7df482b2dcf1a643e840ffce1b83c3)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/wow.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/wow.c b/drivers/net/wireless/realtek/rtw89/wow.c
+index a7539f91264d..d6bf5cd8be3b 100644
+--- a/drivers/net/wireless/realtek/rtw89/wow.c
++++ b/drivers/net/wireless/realtek/rtw89/wow.c
+@@ -358,7 +358,7 @@ static void rtw89_wow_get_key_info_iter(struct ieee80211_hw *hw,
+ 		key_info->gtk_keyidx = key->keyidx;
+ 		break;
+ 	default:
+-		rtw89_debug(rtwdev, RTW89_DBG_WOW, "unsupport cipher %x\n",
++		rtw89_debug(rtwdev, RTW89_DBG_WOW, "unsupported cipher %x\n",
+ 			    key->cipher);
+ 		goto err;
+ 	}
+@@ -443,7 +443,7 @@ static void rtw89_wow_set_key_info_iter(struct ieee80211_hw *hw,
+ 	case WLAN_CIPHER_SUITE_WEP104:
+ 		break;
+ 	default:
+-		rtw89_debug(rtwdev, RTW89_DBG_WOW, "unsupport cipher %x\n",
++		rtw89_debug(rtwdev, RTW89_DBG_WOW, "unsupported cipher %x\n",
+ 			    key->cipher);
+ 		goto err;
+ 	}
+-- 
+2.55.0
+

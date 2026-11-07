@@ -1,0 +1,80 @@
+From 8be2edf4bcbca07bc19ef4009c9ffe6543d8302f Mon Sep 17 00:00:00 2001
+From: Dian-Syuan Yang <dian_syuan0116@realtek.com>
+Date: Thu, 25 Jun 2026 14:15:39 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: drop packet offload entry on H2C
+ addition failure to avoid scan issue
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A special case is when C2H done ack has been completed, but the
+corresponding packet offload response has not actually been received,
+which causes the add packet offload to fail. In this state, firmware
+treats the entry as added, so subsequent add requests for the same id
+are rejected as duplicates. To recover from this, send a delete packet
+offload H2C command to roll back the normal state. It has been tested and
+verified to have no functional side effect.
+
+Signed-off-by: Dian-Syuan Yang <dian_syuan0116@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260625061545.44808-5-pkshih@realtek.com
+(cherry picked from commit c99498b4cbd75f7e1b45e354c2108f4646c0944b)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/fw.c | 26 ++++++++++++++++++++++---
+ 1 file changed, 23 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.c b/drivers/net/wireless/realtek/rtw89/fw.c
+index 923535aa1870..e3732fbea993 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.c
++++ b/drivers/net/wireless/realtek/rtw89/fw.c
+@@ -6654,8 +6654,8 @@ int rtw89_fw_h2c_del_pkt_offload(struct rtw89_dev *rtwdev, u8 id)
+ 	return 0;
+ }
+ 
+-int rtw89_fw_h2c_add_pkt_offload(struct rtw89_dev *rtwdev, u8 *id,
+-				 struct sk_buff *skb_ofld)
++static int __rtw89_fw_h2c_add_pkt_offload(struct rtw89_dev *rtwdev, u8 *id,
++					  struct sk_buff *skb_ofld)
+ {
+ 	struct rtw89_wait_info *wait = &rtwdev->mac.fw_ofld_wait;
+ 	struct sk_buff *skb;
+@@ -6697,13 +6697,33 @@ int rtw89_fw_h2c_add_pkt_offload(struct rtw89_dev *rtwdev, u8 *id,
+ 		rtw89_debug(rtwdev, RTW89_DBG_FW,
+ 			    "failed to add pkt ofld: id %d, ret %d\n",
+ 			    alloc_id, ret);
++		/*
++		 * Firmware may consider that it has added this entry
++		 * successfully even though the H2C return timeout.
++		 * Send a delete H2C command to drop it, and thus the
++		 * next add on the same id won't be rejected as duplicate.
++		 */
++		rtw89_fw_h2c_del_pkt_offload(rtwdev, alloc_id);
+ 		rtw89_core_release_bit_map(rtwdev->pkt_offload, alloc_id);
+-		return ret;
++
++		return -EAGAIN;
+ 	}
+ 
+ 	return 0;
+ }
+ 
++int rtw89_fw_h2c_add_pkt_offload(struct rtw89_dev *rtwdev, u8 *id,
++				 struct sk_buff *skb_ofld)
++{
++	int ret;
++
++	ret = __rtw89_fw_h2c_add_pkt_offload(rtwdev, id, skb_ofld);
++	if (ret == -EAGAIN)
++		ret = __rtw89_fw_h2c_add_pkt_offload(rtwdev, id, skb_ofld);
++
++	return ret;
++}
++
+ static
+ int rtw89_fw_h2c_scan_list_offload_ax(struct rtw89_dev *rtwdev, int ch_num,
+ 				      struct list_head *chan_list)
+-- 
+2.55.0
+

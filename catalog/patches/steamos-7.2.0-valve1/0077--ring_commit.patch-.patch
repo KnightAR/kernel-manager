@@ -1,0 +1,26 @@
+From 87971eb6bacfc9c219c513e156ff070cd9fbd202 Mon Sep 17 00:00:00 2001
+From: "Pierre-Loup A. Griffais" <git@plagman.net>
+Date: Wed, 30 Aug 2023 18:11:07 -0700
+Subject: [PATCH] "ring_commit.patch"
+
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_ring.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_ring.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_ring.c
+index b97fa35bac23..838be3b89b1d 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_ring.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_ring.c
+@@ -181,7 +181,7 @@ void amdgpu_ring_commit(struct amdgpu_ring *ring)
+ 	if (count != 0)
+ 		ring->funcs->insert_nop(ring, count);
+ 
+-	mb();
++	smp_wmb();
+ 	amdgpu_ring_set_wptr(ring);
+ 
+ 	if (ring->funcs->end_use)
+-- 
+2.55.0
+

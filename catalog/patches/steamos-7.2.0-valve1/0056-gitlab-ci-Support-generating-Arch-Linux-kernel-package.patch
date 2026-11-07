@@ -1,0 +1,151 @@
+From f55ab6acd4970c92a4dda5ef921b624e49485680 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Wed, 18 Dec 2024 20:15:30 +0200
+Subject: [PATCH] gitlab-ci: Support generating Arch Linux kernel package
+
+Although Debian officially supports the makepkg Arch utility via
+pacman-package-manager, it requires an Arch Linux chroot to actually
+provide the required runtime dependencies.
+
+Therefore, make use of an Arch Linux based docker container for building
+the kernel and generate a pacman package instead of a tar archive.
+
+Note the QEMU related build continues to rely on Debian builder for now.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml          | 59 +++++++++++++++++++++++++++++++----------
+ ci/archlinux/Dockerfile | 13 +++++++++
+ 2 files changed, 58 insertions(+), 14 deletions(-)
+ create mode 100644 ci/archlinux/Dockerfile
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 97726133913f..c4aebd4b61ed 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -39,6 +39,8 @@ stages:
+     - echo "Checking $IMAGE_NAME:$IMAGE_TAG"
+     - crane auth login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+     - crane manifest $CI_REGISTRY_IMAGE/$IMAGE_NAME:$IMAGE_TAG
++  # For now disable auto-check
++  when: manual
+ 
+ .build-docker-image:
+   stage: build-image
+@@ -57,7 +59,9 @@ stages:
+       --single-snapshot
+       --build-arg DISTRO_BASE=$IMAGE_DISTRO_BASE
+       --build-arg DISTRO_TAG=$IMAGE_DISTRO_TAG
+-  when: on_failure
++  # For now do not enable auto-build on check failure
++  # when: on_failure
++  when: manual
+ 
+ .use-docker-image:
+   image:
+@@ -80,18 +84,44 @@ build-debian-kernel-builder:
+   extends:
+     - .build-docker-image
+     - .prep-debian-kernel-builder
+-  needs:
+-    - check-debian-kernel-builder
++  # For now do not enable auto-build on check failure
++  # needs:
++  #   - check-debian-kernel-builder
+ 
+ .use-debian-kernel-builder:
+   extends:
+     - .use-docker-image
+     - .prep-debian-kernel-builder
+ 
++.prep-archlinux-kernel-builder:
++  variables:
++    IMAGE_DISTRO_BASE: archlinux
++    IMAGE_DISTRO_TAG: base-devel
++    IMAGE_NAME: archlinux-kernel-builder
++    IMAGE_TAG: "2024-12-02"
++
++check-archlinux-kernel-builder:
++  extends:
++    - .check-docker-image
++    - .prep-archlinux-kernel-builder
++
++build-archlinux-kernel-builder:
++  extends:
++    - .build-docker-image
++    - .prep-archlinux-kernel-builder
++  # For now do not enable auto-build on check failure
++  # needs:
++  #   - check-archlinux-kernel-builder
++
++.use-archlinux-kernel-builder:
++  extends:
++    - .use-docker-image
++    - .prep-archlinux-kernel-builder
++
+ build-kernel-neptune:
+   stage: build-kernel
+   extends:
+-    - .use-debian-kernel-builder
++    - .use-archlinux-kernel-builder
+   rules:
+     - if: $CI_PIPELINE_SOURCE != 'merge_request_event' && $CI_COMMIT_TAG == null && $CI_COMMIT_BRANCH !~ /-integration$/
+       when: manual
+@@ -100,23 +130,24 @@ build-kernel-neptune:
+   variables:
+     BUILD_DIR: build/neptune
+   script:
+-    - mkdir -p $BUILD_DIR
++    # Running makepkg as root is not allowed
++    - kmake="sudo -u builder ZSTD_CLEVEL=19 make -j $(nproc) O=$BUILD_DIR"
+     # Prepare kernel config
++    - mkdir -p $BUILD_DIR
++    - chown builder:builder $BUILD_DIR
+     - |
+-      ./scripts/kconfig/merge_config.sh -m -O $BUILD_DIR \
++      sudo -u builder ./scripts/kconfig/merge_config.sh -m -O $BUILD_DIR \
+         ci/kernel-config/neptune/config \
+         ci/kernel-config/neptune/config-neptune
+-    - make O=$BUILD_DIR olddefconfig
+-    - cp $BUILD_DIR/.config kernel_config_neptune
+-    # Build kernel
+-    - make O=$BUILD_DIR -j $(nproc)
+-    - strip -v --strip-debug $BUILD_DIR/vmlinux
+-    - ZSTD_CLEVEL=19 make O=$BUILD_DIR -j $(nproc) INSTALL_MOD_STRIP=1 tar-pkg
+-    - mv $BUILD_DIR/linux-*.tar .
++    - $kmake olddefconfig
++    # Build kernel, including the Arch package
++    - $kmake pacman-pkg PACMAN_PKGBASE=linux-integration PACMAN_EXTRAPACKAGES=""
++    - mv $BUILD_DIR/linux-*.pkg.tar.zst .
++    - mv $BUILD_DIR/.config kernel_config_neptune
+   artifacts:
+     paths:
+       - kernel_config_neptune
+-      - linux-*.tar
++      - linux-*.pkg.tar.zst
+ 
+ build-kernel-qemu:
+   stage: build-kernel
+diff --git a/ci/archlinux/Dockerfile b/ci/archlinux/Dockerfile
+new file mode 100644
+index 000000000000..74e81f66ca86
+--- /dev/null
++++ b/ci/archlinux/Dockerfile
+@@ -0,0 +1,13 @@
++ARG DISTRO_BASE=archlinux
++ARG DISTRO_TAG=base-devel
++
++FROM $DISTRO_BASE:$DISTRO_TAG
++
++ENV LANG=C.UTF-8
++ENV LC_ALL C.UTF-8
++
++RUN useradd builder && \
++    pacman -Syu --needed --noconfirm --noprogressbar \
++        bc cpio git pahole python rsync && \
++    git config --system --add safe.directory '*' && \
++    rm /var/cache/pacman/pkg/*
+-- 
+2.55.0
+

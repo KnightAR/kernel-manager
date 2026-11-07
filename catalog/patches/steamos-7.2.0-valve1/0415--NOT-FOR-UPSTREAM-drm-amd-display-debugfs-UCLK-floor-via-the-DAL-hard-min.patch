@@ -1,0 +1,303 @@
+From a0d54d5c410dc1dabe828fad3ae9570742947567 Mon Sep 17 00:00:00 2001
+From: Arun Raghavan <arunr@valvesoftware.com>
+Date: Tue, 4 Aug 2026 17:35:02 -0700
+Subject: [PATCH] [NOT-FOR-UPSTREAM] drm/amd/display: debugfs UCLK floor via
+ the DAL hard-min
+
+HDMI audio on Navi 33 (DCN 3.2.1) drops out in a frame-locked pattern
+whenever the memory clock changes DPM level.  Holding UCLK at any single
+frequency eliminates the dropouts entirely, including the lowest DPM
+state, so the level itself is harmless and only the switch blackout
+matters.  Restricting DPM to the top two levels works as well, which fits
+a blackout whose length scales with the size of the clock step.
+
+The obvious userspace workarounds all have side effects.  Masking levels
+through pp_dpm_mclk requires AMD_DPM_FORCED_LEVEL_MANUAL, and
+smu_switch_power_profile() drops every request while that level is set,
+so the GFX ring can no longer bump the workload profile and VR, VIDEO and
+COMPUTE profiles stop being selected.  The OverDrive UclkFmin knob avoids
+manual mode but is not exposed on every board, and enabling OverDrive at
+all makes amdgpu_gfx_profile_ring_begin_use() return early, losing profile
+switching just as thoroughly.  Clearing the DPM_UCLK feature bit works but
+parks the clock at its minimum with no way to choose a floor.
+
+DC already asks the SMU for a UCLK hard-min over the DAL mailbox, which is
+independent of the powerplay forced performance level.  Add
+dc->debug.min_uclk_mhz and clamp every UCLK hard-min in the DCN 3.2 clock
+manager to it, giving a memory clock floor that leaves workload profile
+switching untouched.
+
+Clamping alone is not enough to make the floor usable.
+dcn32_update_clocks() only re-sends a hard-min when the requested dram
+clock changes, so a display sitting at a steady frequency never picks up
+a newly written floor.  Add dc_set_min_uclk_mhz(), which stores the floor
+and pushes it out immediately through the existing set_min_memclk clock
+manager op.
+
+Also record the value actually sent as dc->uclk_hard_min_mhz_requested
+and expose it read-only, so a floor that has not been applied is
+distinguishable from one the SMU declined.
+
+Two debugfs files, amdgpu_dm_min_uclk_mhz and
+amdgpu_dm_uclk_hard_min_requested_mhz.  Whether the SMU honours a DAL
+hard-min is visible in pp_dpm_mclk.
+
+DCN 3.2 and 3.2.1 share dcn32_clk_mgr.c, so both are covered; dcn401 is
+not.
+
+Signed-off-by: Arun Raghavan <arunr@valvesoftware.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .../amd/display/amdgpu_dm/amdgpu_dm_debugfs.c | 58 +++++++++++++++++++
+ .../display/dc/clk_mgr/dcn32/dcn32_clk_mgr.c  | 51 +++++++++++-----
+ drivers/gpu/drm/amd/display/dc/core/dc.c      | 15 +++++
+ drivers/gpu/drm/amd/display/dc/dc.h           | 11 ++++
+ 4 files changed, 120 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_debugfs.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_debugfs.c
+index 7db38ad3f848..c57ceeaaa2a7 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_debugfs.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_debugfs.c
+@@ -4419,6 +4419,60 @@ static int dp_ignore_cable_id_get(void *data, u64 *val)
+ DEFINE_DEBUGFS_ATTRIBUTE(dp_ignore_cable_id_ops, dp_ignore_cable_id_get,
+ 			 dp_ignore_cable_id_set, "%llu\n");
+ 
++/*
++ * Floor, in MHz, for the UCLK hard-min DC asks the SMU for. Holds the memory
++ * clock above a chosen frequency without going through
++ * power_dpm_force_performance_level, so automatic workload profile switching
++ * keeps working. 0 disables the floor.
++ *
++ * Applied immediately, and again on subsequent clock updates. Read
++ * amdgpu_dm_uclk_hard_min_requested_mhz to see what was actually requested,
++ * and pp_dpm_mclk to see whether the SMU honoured it.
++ *
++ * Example usage: echo 675 > /sys/kernel/debug/dri/0/amdgpu_dm_min_uclk_mhz
++ */
++static int min_uclk_mhz_set(void *data, u64 val)
++{
++	struct amdgpu_device *adev = data;
++
++	/* the SMU message carries the frequency in a u16 */
++	if (val > 65535)
++		return -EINVAL;
++
++	mutex_lock(&adev->dm.dc_lock);
++	dc_set_min_uclk_mhz(adev->dm.dc, (unsigned int)val);
++	mutex_unlock(&adev->dm.dc_lock);
++
++	return 0;
++}
++
++static int min_uclk_mhz_get(void *data, u64 *val)
++{
++	struct amdgpu_device *adev = data;
++
++	*val = adev->dm.dc->debug.min_uclk_mhz;
++
++	return 0;
++}
++DEFINE_DEBUGFS_ATTRIBUTE(min_uclk_mhz_ops, min_uclk_mhz_get,
++			 min_uclk_mhz_set, "%llu\n");
++
++/*
++ * Last UCLK hard-min, in MHz, that DC actually asked the SMU for. Reads 0 if
++ * no clock update has sent one yet, which also means any floor written to
++ * amdgpu_dm_min_uclk_mhz has not been applied.
++ */
++static int uclk_hard_min_requested_mhz_get(void *data, u64 *val)
++{
++	struct amdgpu_device *adev = data;
++
++	*val = adev->dm.dc->uclk_hard_min_mhz_requested;
++
++	return 0;
++}
++DEFINE_DEBUGFS_ATTRIBUTE(uclk_hard_min_requested_mhz_ops,
++			 uclk_hard_min_requested_mhz_get, NULL, "%llu\n");
++
+ /*
+  * Sets the DC visual confirm debug option from the given string.
+  * Example usage: echo 1 > /sys/kernel/debug/dri/0/amdgpu_visual_confirm
+@@ -4572,6 +4626,10 @@ void dtn_debugfs_init(struct amdgpu_device *adev)
+ 				&dp_set_mst_en_for_sst_ops);
+ 	debugfs_create_file("amdgpu_dm_dp_ignore_cable_id", 0644, root, adev,
+ 				&dp_ignore_cable_id_ops);
++	debugfs_create_file("amdgpu_dm_min_uclk_mhz", 0644, root, adev,
++				&min_uclk_mhz_ops);
++	debugfs_create_file("amdgpu_dm_uclk_hard_min_requested_mhz", 0444, root, adev,
++				&uclk_hard_min_requested_mhz_ops);
+ 
+ 	debugfs_create_file_unsafe("amdgpu_dm_visual_confirm", 0644, root, adev,
+ 				   &visual_confirm_fops);
+diff --git a/drivers/gpu/drm/amd/display/dc/clk_mgr/dcn32/dcn32_clk_mgr.c b/drivers/gpu/drm/amd/display/dc/clk_mgr/dcn32/dcn32_clk_mgr.c
+index f9886a0eca92..d7d1682f3969 100644
+--- a/drivers/gpu/drm/amd/display/dc/clk_mgr/dcn32/dcn32_clk_mgr.c
++++ b/drivers/gpu/drm/amd/display/dc/clk_mgr/dcn32/dcn32_clk_mgr.c
+@@ -630,6 +630,21 @@ static void dcn32_auto_dpm_test_log(
+ 	}
+ }
+ 
++/* Apply the debug UCLK floor to a hard-min about to be sent to the SMU, and
++ * record what we ended up asking for. The floor rides the DAL mailbox, so it
++ * constrains the memory clock without going through the powerplay forced
++ * performance level, leaving workload profile switching alone.
++ */
++static unsigned int dcn32_uclk_hard_min(struct dc *dc, unsigned int uclk_mhz)
++{
++	if (uclk_mhz < dc->debug.min_uclk_mhz)
++		uclk_mhz = dc->debug.min_uclk_mhz;
++
++	dc->uclk_hard_min_mhz_requested = uclk_mhz;
++
++	return uclk_mhz;
++}
++
+ static void dcn32_update_clocks(struct clk_mgr *clk_mgr_base,
+ 			struct dc_state *context,
+ 			bool safe_to_lower)
+@@ -724,20 +739,22 @@ static void dcn32_update_clocks(struct clk_mgr *clk_mgr_base,
+ 
+ 			/* to disable P-State switching, set UCLK min = max */
+ 			if (!clk_mgr_base->clks.p_state_change_support) {
++				struct clk_bw_params *bw = dc->clk_mgr->bw_params;
++				unsigned int uclk_mhz = bw->max_memclk_mhz;
++
+ 				if (dc->clk_mgr->dc_mode_softmax_enabled) {
+ 					/* On DCN32x we will never have the functional UCLK min above the softmax
+ 					 * since we calculate mode support based on softmax being the max UCLK
+ 					 * frequency.
+ 					 */
+-					if (dc->debug.disable_dc_mode_overwrite) {
++					if (dc->debug.disable_dc_mode_overwrite)
+ 						dcn30_smu_set_hard_max_by_freq(clk_mgr, PPCLK_UCLK, (uint16_t)dc->clk_mgr->bw_params->max_memclk_mhz);
+-						dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK, (uint16_t)dc->clk_mgr->bw_params->max_memclk_mhz);
+-					} else
+-						dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK,
+-								(uint16_t)dc->clk_mgr->bw_params->dc_mode_softmax_memclk);
+-				} else {
+-					dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK, (uint16_t)dc->clk_mgr->bw_params->max_memclk_mhz);
++					else
++						uclk_mhz = bw->dc_mode_softmax_memclk;
+ 				}
++
++				dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK,
++						dcn32_uclk_hard_min(dc, uclk_mhz));
+ 			}
+ 		}
+ 
+@@ -773,7 +790,8 @@ static void dcn32_update_clocks(struct clk_mgr *clk_mgr_base,
+ 						(uint16_t)max((int)dc->clk_mgr->bw_params->dc_mode_softmax_memclk,
+ 								khz_to_mhz_ceil(clk_mgr_base->clks.dramclk_khz)));
+ 
+-			dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK, (uint16_t)khz_to_mhz_ceil(clk_mgr_base->clks.dramclk_khz));
++			dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK, (uint16_t)dcn32_uclk_hard_min(dc,
++					khz_to_mhz_ceil(clk_mgr_base->clks.dramclk_khz)));
+ 		}
+ 
+ 		if (clk_mgr_base->clks.num_ways != new_clocks->num_ways &&
+@@ -1011,21 +1029,23 @@ static void dcn32_notify_wm_ranges(struct clk_mgr *clk_mgr_base)
+ static void dcn32_set_hard_min_memclk(struct clk_mgr *clk_mgr_base, bool current_mode)
+ {
+ 	struct clk_mgr_internal *clk_mgr = TO_CLK_MGR_INTERNAL(clk_mgr_base);
++	struct dc *dc = clk_mgr_base->ctx->dc;
++	unsigned int uclk_mhz;
+ 
+ 	if (!clk_mgr->smu_present)
+ 		return;
+ 
+ 	if (current_mode) {
+ 		if (clk_mgr_base->clks.p_state_change_support)
+-			dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK,
+-					(uint16_t)khz_to_mhz_ceil(clk_mgr_base->clks.dramclk_khz));
++			uclk_mhz = khz_to_mhz_ceil(clk_mgr_base->clks.dramclk_khz);
+ 		else
+-			dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK,
+-					(uint16_t)clk_mgr_base->bw_params->max_memclk_mhz);
++			uclk_mhz = clk_mgr_base->bw_params->max_memclk_mhz;
+ 	} else {
+-		dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK,
+-				(uint16_t)clk_mgr_base->bw_params->clk_table.entries[0].memclk_mhz);
++		uclk_mhz = clk_mgr_base->bw_params->clk_table.entries[0].memclk_mhz;
+ 	}
++
++	dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK,
++			(uint16_t)dcn32_uclk_hard_min(dc, uclk_mhz));
+ }
+ 
+ /* Set max memclk to highest DPM value */
+@@ -1135,7 +1155,8 @@ static void dcn32_set_min_memclk(struct clk_mgr *clk_mgr_base, unsigned int memc
+ 	if (!clk_mgr->smu_present)
+ 		return;
+ 
+-	dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK, (uint16_t)memclk_mhz);
++	dcn32_smu_set_hard_min_by_freq(clk_mgr, PPCLK_UCLK,
++			(uint16_t)dcn32_uclk_hard_min(clk_mgr_base->ctx->dc, memclk_mhz));
+ }
+ 
+ static struct clk_mgr_funcs dcn32_funcs = {
+diff --git a/drivers/gpu/drm/amd/display/dc/core/dc.c b/drivers/gpu/drm/amd/display/dc/core/dc.c
+index dfd74df14582..70294547fc97 100644
+--- a/drivers/gpu/drm/amd/display/dc/core/dc.c
++++ b/drivers/gpu/drm/amd/display/dc/core/dc.c
+@@ -6451,6 +6451,21 @@ void dc_unlock_memory_clock_frequency(struct dc *dc)
+ 		dc->clk_mgr->funcs->set_hard_max_memclk(dc->clk_mgr);
+ }
+ 
++/* Set a floor, in MHz, on the UCLK hard-min DC asks the SMU for.  This rides
++ * the DAL mailbox rather than the powerplay forced performance level, so it
++ * constrains the memory clock without disturbing workload profile switching.
++ * Applied immediately as well as on subsequent clock updates, because those
++ * only re-send a hard-min when the requested dram clock changes, which can be
++ * a long time on an otherwise idle display.  Pass 0 to remove the floor.
++ */
++void dc_set_min_uclk_mhz(struct dc *dc, unsigned int mhz)
++{
++	dc->debug.min_uclk_mhz = mhz;
++
++	if (dc->clk_mgr && dc->clk_mgr->funcs->set_min_memclk)
++		dc->clk_mgr->funcs->set_min_memclk(dc->clk_mgr, mhz);
++}
++
+ /* set min memory clock to the min required for current mode, max to maxDPM */
+ void dc_lock_memory_clock_frequency(struct dc *dc)
+ {
+diff --git a/drivers/gpu/drm/amd/display/dc/dc.h b/drivers/gpu/drm/amd/display/dc/dc.h
+index f26f10244437..bdfe2fc4b516 100644
+--- a/drivers/gpu/drm/amd/display/dc/dc.h
++++ b/drivers/gpu/drm/amd/display/dc/dc.h
+@@ -1200,6 +1200,10 @@ struct dc_debug_options {
+ 	bool allow_sw_cursor_fallback;
+ 	unsigned int force_subvp_num_ways;
+ 	unsigned int force_mall_ss_num_ways;
++	/* Floor, in MHz, for the UCLK hard-min DC requests from the SMU.
++	 * 0 leaves the requested frequency alone.
++	 */
++	unsigned int min_uclk_mhz;
+ 	bool alloc_extra_way_for_cursor;
+ 	uint32_t subvp_extra_lines;
+ 	bool disable_force_pstate_allow_on_hw_release;
+@@ -1858,6 +1862,10 @@ struct dc {
+ 	struct dc_cap_funcs cap_funcs;
+ 	struct dc_config config;
+ 	struct dc_bounding_box_overrides bb_overrides;
++	/* Last UCLK hard-min, in MHz, that DC actually asked the SMU for.
++	 * 0 until the first clock update that sends one.
++	 */
++	unsigned int uclk_hard_min_mhz_requested;
+ 	struct dc_bug_wa work_arounds;
+ 	struct dc_context *ctx;
+ 	struct dc_phy_addr_space_config vm_pa_config;
+@@ -2927,6 +2935,9 @@ bool dc_dmub_is_ips_idle_state(struct dc *dc);
+ /* set min and max memory clock to lowest and highest DPM level, respectively */
+ void dc_unlock_memory_clock_frequency(struct dc *dc);
+ 
++/* set a floor, in MHz, on the UCLK hard-min DC asks the SMU for; 0 removes it */
++void dc_set_min_uclk_mhz(struct dc *dc, unsigned int mhz);
++
+ /* set min memory clock to the min required for current mode, max to maxDPM */
+ void dc_lock_memory_clock_frequency(struct dc *dc);
+ 
+-- 
+2.55.0
+

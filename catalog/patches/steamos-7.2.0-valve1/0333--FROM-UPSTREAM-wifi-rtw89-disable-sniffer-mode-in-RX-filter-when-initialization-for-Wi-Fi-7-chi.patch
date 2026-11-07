@@ -1,0 +1,40 @@
+From 03a30bf51670c0775256cd9ef08cac46fa38c4ff Mon Sep 17 00:00:00 2001
+From: Chih-Kang Chang <gary.chang@realtek.com>
+Date: Thu, 25 Jun 2026 14:15:40 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: disable sniffer mode in RX
+ filter when initialization for Wi-Fi 7 chips
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Sniffer mode is enabled by default in the RX filter on Wi-Fi 7 chips,
+which causes all packets to be received regardless of the ADDR_CAM
+lookup result. This may result in unexpected packets being received.
+Therefore, disable it by default.
+
+Signed-off-by: Chih-Kang Chang <gary.chang@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260625061545.44808-6-pkshih@realtek.com
+(cherry picked from commit b993046234fc3110f5ca3eb561492f8072ccc689)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/mac_be.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/mac_be.c b/drivers/net/wireless/realtek/rtw89/mac_be.c
+index d9c93adb58ee..14f1e30066e9 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac_be.c
++++ b/drivers/net/wireless/realtek/rtw89/mac_be.c
+@@ -1333,7 +1333,7 @@ static int rx_fltr_init_be(struct rtw89_dev *rtwdev, u8 mac_idx)
+ 
+ 	reg = rtw89_mac_reg_by_idx(rtwdev, R_BE_RX_FLTR_OPT, mac_idx);
+ 	val = B_BE_A_BC_CAM_MATCH | B_BE_A_UC_CAM_MATCH | B_BE_A_MC |
+-	      B_BE_A_BC | B_BE_A_A1_MATCH | B_BE_SNIFFER_MODE |
++	      B_BE_A_BC | B_BE_A_A1_MATCH |
+ 	      u32_encode_bits(15, B_BE_UID_FILTER_MASK);
+ 	rtw89_write32(rtwdev, reg, val);
+ 	u32p_replace_bits(&rtwdev->hal.rx_fltr, 15, B_BE_UID_FILTER_MASK);
+-- 
+2.55.0
+

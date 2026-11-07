@@ -1,0 +1,57 @@
+From 3a62b83e736ad3fc6bcee49e9cfaf8f5dcf67a74 Mon Sep 17 00:00:00 2001
+From: Mario Limonciello <mario.limonciello@amd.com>
+Date: Mon, 28 Oct 2024 09:55:42 -0500
+Subject: [PATCH] cpufreq/amd-pstate: Move registration after static function
+ call update
+
+On shared memory designs the static functions need to work before
+registration is done or the system can hang at bootup.
+
+Move the registration later in amd_pstate_init() to solve this.
+
+Fixes: b427ac408475 ("cpufreq/amd-pstate: Remove the redundant amd_pstate_set_driver() call")
+Reported-by: Klara Modin <klarasmodin@gmail.com>
+Closes: https://lore.kernel.org/linux-pm/cf9c146d-bacf-444e-92e2-15ebf513af96@gmail.com/#t
+Tested-by: Klara Modin <klarasmodin@gmail.com>
+Tested-by: Dhananjay Ugwekar <dhananjay.ugwekar@amd.com>
+Link: https://lore.kernel.org/r/20241028145542.1739160-2-superm1@kernel.org
+Signed-off-by: Mario Limonciello <mario.limonciello@amd.com>
+(cherry picked from commit ff2653ded4d99b709f62f35656d976c47a7aa476)
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/cpufreq/amd-pstate.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/cpufreq/amd-pstate.c b/drivers/cpufreq/amd-pstate.c
+index f6db2e738f7f..6fb01e64c89b 100644
+--- a/drivers/cpufreq/amd-pstate.c
++++ b/drivers/cpufreq/amd-pstate.c
+@@ -2280,12 +2280,6 @@ static int __init amd_pstate_init(void)
+ 		return -ENODEV;
+ 	}
+ 
+-	ret = amd_pstate_register_driver(cppc_state);
+-	if (ret) {
+-		pr_err("failed to register with return %d\n", ret);
+-		return ret;
+-	}
+-
+ 	/* capability check */
+ 	if (cpu_feature_enabled(X86_FEATURE_CPPC)) {
+ 		pr_debug("AMD CPPC MSR based functionality is supported\n");
+@@ -2298,6 +2292,12 @@ static int __init amd_pstate_init(void)
+ 		static_call_update(amd_pstate_set_epp, shmem_set_epp);
+ 	}
+ 
++	ret = amd_pstate_register_driver(cppc_state);
++	if (ret) {
++		pr_err("failed to register with return %d\n", ret);
++		return ret;
++	}
++
+ 	if (amd_pstate_prefcore) {
+ 		ret = amd_detect_prefcore(&amd_pstate_prefcore);
+ 		if (ret)
+-- 
+2.55.0
+

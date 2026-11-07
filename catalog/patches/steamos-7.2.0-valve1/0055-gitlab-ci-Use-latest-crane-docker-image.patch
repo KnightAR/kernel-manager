@@ -1,0 +1,34 @@
+From a3565ecad0ac5b31223f6f0d332beed677ad7be2 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Fri, 13 Dec 2024 21:27:33 +0200
+Subject: [PATCH] gitlab-ci: Use latest crane docker image
+
+Pulling crane v0.15.0 started to fail recently:
+
+  manifest for gcr.io/go-containerregistry/crane/debug:v0.15.0 not found
+
+It seems the tagged releases have been replaced by sha256 digests, hence
+let's always use the latest debug tag.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 2d381c2fc86b..97726133913f 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -31,7 +31,7 @@ stages:
+ .check-docker-image:
+   stage: check-image
+   image:
+-    name: gcr.io/go-containerregistry/crane/debug:v0.15.0
++    name: gcr.io/go-containerregistry/crane:debug
+     entrypoint: [""]
+   variables:
+     GIT_STRATEGY: none
+-- 
+2.55.0
+

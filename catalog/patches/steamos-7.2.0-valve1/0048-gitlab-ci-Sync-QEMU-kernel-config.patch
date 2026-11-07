@@ -1,0 +1,63 @@
+From 3ed08253bef31dfc35340ef983fa3d4079c88c14 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Fri, 3 May 2024 13:47:15 +0300
+Subject: [PATCH] gitlab-ci: Sync QEMU kernel config
+
+Add some missing config settings from neptune kernel to config-fragment
+while dropping those unnecessary from config-fragment-extra.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ ci/kernel-config/qemu/config-fragment       | 8 ++++++--
+ ci/kernel-config/qemu/config-fragment-extra | 3 ---
+ 2 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/ci/kernel-config/qemu/config-fragment b/ci/kernel-config/qemu/config-fragment
+index 8e7d6ad8aa78..48308f6d2931 100644
+--- a/ci/kernel-config/qemu/config-fragment
++++ b/ci/kernel-config/qemu/config-fragment
+@@ -7,7 +7,9 @@ CONFIG_EXTCON_STEAMDECK=y
+ CONFIG_LEDS_STEAMDECK=y
+ CONFIG_SENSORS_STEAMDECK=y
+ 
+-CONFIG_HID_STEAM=m
++CONFIG_DRM_AMD_COLOR_STEAMDECK=y
++
++CONFIG_HID_STEAM=y
+ CONFIG_STEAM_FF=y
+ 
+ CONFIG_SND_SOC=y
+@@ -29,5 +31,7 @@ CONFIG_LTRF216A=y
+ CONFIG_ATH11K=y
+ CONFIG_ATH11K_PCI=y
+ CONFIG_CRYPTO_MICHAEL_MIC=y
++CONFIG_CFG80211_CERTIFICATION_ONUS=y
++CONFIG_ATH_REG_DYNAMIC_USER_REG_HINTS=y
+ 
+-CONFIG_DRM_ANALOGIX_ANX7580=y
++CONFIG_SYSFB_SIMPLEFB=n
+diff --git a/ci/kernel-config/qemu/config-fragment-extra b/ci/kernel-config/qemu/config-fragment-extra
+index 4e8e3662481f..bff9568a5679 100644
+--- a/ci/kernel-config/qemu/config-fragment-extra
++++ b/ci/kernel-config/qemu/config-fragment-extra
+@@ -130,7 +130,6 @@ CONFIG_DRM_AMDGPU=y
+ CONFIG_DRM_AMDGPU_CIK=y
+ CONFIG_DRM_AMDGPU_SI=y
+ CONFIG_DRM_AMD_ACP=y
+-CONFIG_DRM_AMD_COLOR_STEAMDECK=y
+ CONFIG_DRM_AMD_DC_HDCP=y
+ CONFIG_DRM_AMD_DC_SI=y
+ CONFIG_DRM_DP_AUX_CHARDEV=y
+@@ -202,8 +201,6 @@ CONFIG_HID_BATTERY_STRENGTH=y
+ # CONFIG_HID_MONTEREY is not set
+ CONFIG_HID_MULTITOUCH=y
+ # CONFIG_HID_REDRAGON is not set
+-CONFIG_HID_STEAM=y
+-CONFIG_STEAM_FF=y
+ CONFIG_HIST_TRIGGERS=y
+ CONFIG_HOTPLUG_PCI_ACPI=y
+ CONFIG_HOTPLUG_PCI_CPCI=y
+-- 
+2.55.0
+

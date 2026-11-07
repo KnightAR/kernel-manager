@@ -1,0 +1,41 @@
+From 530093a6b4f069fa179d4b78c3f4efb6bd767dae Mon Sep 17 00:00:00 2001
+From: Antheas Kapenekakis <lkml@antheas.dev>
+Date: Thu, 4 Sep 2025 19:50:17 +0200
+Subject: [PATCH] [FROM-ML] drm: panel-orientation-quirks: add additional ID
+ for Ayaneo 2021
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The Ayaneo 2021 has an alternate variant that skips AYA in the
+beginning. Add that as well.
+
+Signed-off-by: Antheas Kapenekakis <lkml@antheas.dev>
+Reviewed-by: Philip Müller <philm@manjaro.org>
+Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
+Link: https://lore.kernel.org/r/20250904175025.3249650-3-lkml@antheas.dev
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/drm_panel_orientation_quirks.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/gpu/drm/drm_panel_orientation_quirks.c b/drivers/gpu/drm/drm_panel_orientation_quirks.c
+index dfa64fbdd1eb..b82bcf4f5d31 100644
+--- a/drivers/gpu/drm/drm_panel_orientation_quirks.c
++++ b/drivers/gpu/drm/drm_panel_orientation_quirks.c
+@@ -215,6 +215,12 @@ static const struct dmi_system_id orientation_data[] = {
+ 		  DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "AYA NEO 2021"),
+ 		},
+ 		.driver_data = (void *)&lcd800x1280_rightside_up,
++	}, {	/* AYA NEO 2021 */
++		.matches = {
++		  DMI_EXACT_MATCH(DMI_SYS_VENDOR, "AYANEO"),
++		  DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "NEO 2021"),
++		},
++		.driver_data = (void *)&lcd800x1280_rightside_up,
+ 	}, {	/* AYA NEO AIR */
+ 		.matches = {
+ 		  DMI_EXACT_MATCH(DMI_SYS_VENDOR, "AYANEO"),
+-- 
+2.55.0
+

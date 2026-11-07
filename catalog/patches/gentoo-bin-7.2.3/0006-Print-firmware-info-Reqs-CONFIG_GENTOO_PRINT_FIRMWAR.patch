@@ -1,0 +1,32 @@
+From f7e0dbfeca34c76660a593643085583276b8004d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Micha=C5=82=20G=C3=B3rny?= <mgorny@gentoo.org>
+Date: Fri, 4 Jul 2025 20:44:19 +0200
+Subject: [PATCH 6/9] Print firmware info (Reqs
+ CONFIG_GENTOO_PRINT_FIRMWARE_INFO)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Thanks-to: Georgy Yakovlev
+From: https://bugs.gentoo.org/732852
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ drivers/base/firmware_loader/main.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/base/firmware_loader/main.c b/drivers/base/firmware_loader/main.c
+index 24213a0ea831..16c4544e58b1 100644
+--- a/drivers/base/firmware_loader/main.c
++++ b/drivers/base/firmware_loader/main.c
+@@ -861,6 +861,11 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
+ 
+ 	ret = _request_firmware_prepare(&fw, name, device, buf, size,
+ 					offset, opt_flags);
++
++#ifdef CONFIG_GENTOO_PRINT_FIRMWARE_INFO
++        printk(KERN_NOTICE "Loading firmware: %s\n", name);
++#endif
++
+ 	if (ret <= 0) /* error or already assigned */
+ 		goto out;
+ 

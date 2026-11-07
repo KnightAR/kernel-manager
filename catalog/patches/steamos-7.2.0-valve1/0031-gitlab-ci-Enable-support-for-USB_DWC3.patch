@@ -1,0 +1,26 @@
+From 8457714d27dcfa1d3f09fe8afeaa7a6b73e6c043 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Tue, 6 Feb 2024 23:55:41 +0200
+Subject: [PATCH] gitlab-ci: Enable support for USB_DWC3
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .config-fragment-extra | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/.config-fragment-extra b/.config-fragment-extra
+index 8a122a5a4dd1..4e8e3662481f 100644
+--- a/.config-fragment-extra
++++ b/.config-fragment-extra
+@@ -565,6 +565,7 @@ CONFIG_USB_NET_DRIVERS=y
+ # CONFIG_USB_NET_NET1080 is not set
+ # CONFIG_USB_NET_ZAURUS is not set
+ CONFIG_USB_RTL8152=y
++CONFIG_USB_DWC3=y
+ CONFIG_USB_SERIAL=y
+ CONFIG_USB_SERIAL_CONSOLE=y
+ CONFIG_USB_SERIAL_GENERIC=y
+-- 
+2.55.0
+

@@ -1,0 +1,47 @@
+From 18aa0f611e788132104aaff8da2ce68527ae24e7 Mon Sep 17 00:00:00 2001
+From: Eric Huang <echuang@realtek.com>
+Date: Tue, 7 Jul 2026 17:10:45 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: phy: fix bandedge primary
+ channel for 2.4GHz 40MHz and 6GHz
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Correct 2.4GHz bandwidth 40MHz bandedge check: pri_ch 5/9 instead of 3/11.
+Remove stale 6GHz bandedge case; no restricted band borders 6GHz range.
+
+Signed-off-by: Eric Huang <echuang@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260707091056.42771-5-pkshih@realtek.com
+(cherry picked from commit 852927114f6ef37530952b3dba063d24e60b38d9)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/phy_be.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/phy_be.c b/drivers/net/wireless/realtek/rtw89/phy_be.c
+index 99263355e2f1..ac4ce30445b3 100644
+--- a/drivers/net/wireless/realtek/rtw89/phy_be.c
++++ b/drivers/net/wireless/realtek/rtw89/phy_be.c
+@@ -623,7 +623,7 @@ static u32 rtw89_phy_bb_wrap_be_bandedge_decision(struct rtw89_dev *rtwdev,
+ 	case RTW89_BAND_2G:
+ 		if (pri_ch == 1 || pri_ch == 13)
+ 			val = BIT(1) | BIT(0);
+-		else if (pri_ch == 3 || pri_ch == 11)
++		else if (pri_ch == 5 || pri_ch == 9)
+ 			val = BIT(1);
+ 		break;
+ 	case RTW89_BAND_5G:
+@@ -637,8 +637,6 @@ static u32 rtw89_phy_bb_wrap_be_bandedge_decision(struct rtw89_dev *rtwdev,
+ 			val = BIT(3);
+ 		break;
+ 	case RTW89_BAND_6G:
+-		if (pri_ch == 233)
+-			val = BIT(0);
+ 		break;
+ 	}
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,109 @@
+From f3b32b94f0ba1dbb511b9a7cec9e98c7a4835dcf Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Tomasz=20Paku=C5=82a?= <tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 16 Feb 2026 17:45:10 +0100
+Subject: [PATCH] [FROM-ML] drm/amd/display: Enable HDMI VRR
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+[Why]
+We'd like to expose VRR functionality to end user if HDMI sink is
+advertising it's support.
+
+[How]
+VTEM info frame is used to signal HDMI sink that VRR is active.
+Use VTEM info packet as vrr_infopacket
+
+Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
+Link: https://lore.kernel.org/r/20260216164516.36803-22-tomasz.pakula.oficjalny@gmail.com
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c    | 16 +++++++++++++---
+ .../drm/amd/display/modules/freesync/freesync.c  |  4 ++++
+ .../display/modules/inc/mod_info_packet_types.h  |  1 +
+ .../display/modules/info_packet/info_packet.c    |  1 +
+ 4 files changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+index df3fd4d2b437..7c967230f8e8 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -10019,7 +10019,11 @@ static void update_freesync_state_on_stream(
+ 
+ 	aconn = (struct amdgpu_dm_connector *)new_stream->dm_stream_context;
+ 
+-	if (aconn && (aconn->as_type == ADAPTIVE_SYNC_TYPE_PCON_ALLOWED || aconn->vsdb_info.replay_mode)) {
++	if (aconn && aconn->as_type == ADAPTIVE_SYNC_TYPE_HDMI)
++		packet_type = PACKET_TYPE_VTEM;
++
++	else if (aconn && (aconn->as_type == ADAPTIVE_SYNC_TYPE_PCON_ALLOWED ||
++		      aconn->vsdb_info.replay_mode)) {
+ 		pack_sdp_v1_3 = aconn->pack_sdp_v1_3;
+ 
+ 		if (aconn->vsdb_info.amd_vsdb_version == 1)
+@@ -14125,8 +14129,14 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
+ 		}
+ 
+ 	/* HDMI */
+-	} else if (sink->sink_signal == SIGNAL_TYPE_HDMI_TYPE_A && vsdb_info.freesync_supported) {
+-		monitor_range_from_vsdb(&connector->display_info, &vsdb_info);
++	} else if (sink->sink_signal == SIGNAL_TYPE_HDMI_TYPE_A) {
++		/* Prefer HDMI VRR */
++		if (hdmi_vrr.supported) {
++			amdgpu_dm_connector->as_type = ADAPTIVE_SYNC_TYPE_HDMI;
++			monitor_range_from_hdmi(&connector->display_info, &vsdb_info);
++		} else if (vsdb_info.freesync_supported)
++			monitor_range_from_vsdb(&connector->display_info, &vsdb_info);
++
+ 		freesync_capable = copy_range_to_amdgpu_connector(connector);
+ 
+ 	/* DP -> HDMI PCON */
+diff --git a/drivers/gpu/drm/amd/display/modules/freesync/freesync.c b/drivers/gpu/drm/amd/display/modules/freesync/freesync.c
+index f3b41087678b..5d5f56bb7afb 100644
+--- a/drivers/gpu/drm/amd/display/modules/freesync/freesync.c
++++ b/drivers/gpu/drm/amd/display/modules/freesync/freesync.c
+@@ -27,6 +27,7 @@
+ #include "dc.h"
+ #include "mod_freesync.h"
+ #include "core_types.h"
++#include "mod_info_packet.h"
+ 
+ #define MOD_FREESYNC_MAX_CONCURRENT_STREAMS  32
+ 
+@@ -967,6 +968,9 @@ void mod_freesync_build_vrr_infopacket(struct mod_freesync *mod_freesync,
+ 		return;
+ 
+ 	switch (packet_type) {
++	case PACKET_TYPE_VTEM:
++		mod_build_vtem_infopacket(stream, vrr, infopacket);
++		break;
+ 	case PACKET_TYPE_FS_V3:
+ 		build_vrr_infopacket_v3(stream->signal, vrr, app_tf, infopacket, stream->freesync_on_desktop);
+ 		break;
+diff --git a/drivers/gpu/drm/amd/display/modules/inc/mod_info_packet_types.h b/drivers/gpu/drm/amd/display/modules/inc/mod_info_packet_types.h
+index d3eb9c3b8683..6570fade437c 100644
+--- a/drivers/gpu/drm/amd/display/modules/inc/mod_info_packet_types.h
++++ b/drivers/gpu/drm/amd/display/modules/inc/mod_info_packet_types.h
+@@ -32,6 +32,7 @@ enum adaptive_sync_type {
+ 	ADAPTIVE_SYNC_TYPE_PCON_ALLOWED          = 2,
+ 	ADAPTIVE_SYNC_TYPE_PCON_NOT_ALLOWED      = 3,
+ 	ADAPTIVE_SYNC_TYPE_EDP                   = 4,
++	ADAPTIVE_SYNC_TYPE_HDMI                  = 5,
+ };
+ 
+ #endif /* MOD_INFO_PACKET_TYPES_H_ */
+diff --git a/drivers/gpu/drm/amd/display/modules/info_packet/info_packet.c b/drivers/gpu/drm/amd/display/modules/info_packet/info_packet.c
+index afc417ae7241..e8bdd4ba7a0a 100644
+--- a/drivers/gpu/drm/amd/display/modules/info_packet/info_packet.c
++++ b/drivers/gpu/drm/amd/display/modules/info_packet/info_packet.c
+@@ -698,6 +698,7 @@ void mod_build_adaptive_sync_infopacket(const struct dc_stream_state *stream,
+ 		break;
+ 	case ADAPTIVE_SYNC_TYPE_NONE:
+ 	case ADAPTIVE_SYNC_TYPE_PCON_NOT_ALLOWED:
++	case ADAPTIVE_SYNC_TYPE_HDMI:
+ 	default:
+ 		break;
+ 	}
+-- 
+2.55.0
+

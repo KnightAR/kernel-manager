@@ -1,0 +1,508 @@
+From 15225113e5f5d71472d3fab7fea6494622451367 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <nat@pixelcluster.dev>
+Date: Wed, 12 Aug 2026 13:58:30 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/amdgpu: Use amdgpu_vm_update_ctx in
+ update_params
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Trivial cleanup. No functional change.
+
+Signed-off-by: Natalie Vock <nat@pixelcluster.dev>
+[nfraprado: fixed conflicts]
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c      | 20 +++---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h      |  9 +--
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm_cpu.c  | 10 +--
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm_pt.c   | 74 ++++++++++-----------
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm_sdma.c | 33 ++++-----
+ 5 files changed, 71 insertions(+), 75 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+index 9ea5eb9bae94..a4df06ad87bf 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+@@ -1129,8 +1129,7 @@ int amdgpu_vm_update_pdes(struct amdgpu_vm_update_ctx *ctx, bool immediate)
+ 		return -ENODEV;
+ 
+ 	memset(&params, 0, sizeof(params));
+-	params.adev = ctx->adev;
+-	params.vm = ctx->vm;
++	params.ctx = ctx;
+ 	params.immediate = immediate;
+ 
+ 	r = ctx->vm->update_funcs->prepare(&params, NULL,
+@@ -1194,7 +1193,7 @@ amdgpu_vm_tlb_flush(struct amdgpu_vm_update_params *params,
+ 		    struct dma_fence **fence,
+ 		    struct amdgpu_vm_tlb_seq_struct *tlb_cb)
+ {
+-	struct amdgpu_vm *vm = params->vm;
++	struct amdgpu_vm *vm = params->ctx->vm;
+ 
+ 	tlb_cb->vm = vm;
+ 	if (!fence || !*fence) {
+@@ -1215,7 +1214,7 @@ amdgpu_vm_tlb_flush(struct amdgpu_vm_update_params *params,
+ 	 * sort out the issues with KIQ/MES TLB invalidation timeouts.
+ 	 */
+ 	if (!params->unlocked && vm->need_tlb_fence) {
+-		amdgpu_vm_tlb_fence_create(params->adev, vm, fence);
++		amdgpu_vm_tlb_fence_create(params->ctx->adev, vm, fence);
+ 
+ 		/* Makes sure no PD/PT is freed before the flush */
+ 		dma_resv_add_fence(vm->root.bo->tbo.base.resv, *fence,
+@@ -1282,8 +1281,7 @@ int amdgpu_vm_update_range(struct amdgpu_vm_update_ctx *ctx, bool immediate,
+ 		     IP_VERSION(9, 0, 0);
+ 
+ 	memset(&params, 0, sizeof(params));
+-	params.adev = ctx->adev;
+-	params.vm = ctx->vm;
++	params.ctx = ctx;
+ 	params.immediate = immediate;
+ 	params.pages_addr = pages_addr;
+ 	params.unlocked = unlocked;
+@@ -2730,6 +2728,7 @@ void amdgpu_vm_set_task_info(struct amdgpu_vm *vm)
+ int amdgpu_vm_init(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 		   int32_t xcp_id, uint32_t pasid)
+ {
++	struct amdgpu_vm_update_ctx ctx;
+ 	struct amdgpu_bo *root_bo;
+ 	struct amdgpu_bo_vm *root;
+ 	int r, i;
+@@ -2750,6 +2749,7 @@ int amdgpu_vm_init(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 	if (r)
+ 		return r;
+ 
++	amdgpu_vm_update_ctx_init(&ctx, adev, vm);
+ 	ttm_lru_bulk_move_init(&vm->lru_bulk_move, true);
+ 
+ 	vm->is_compute_context = false;
+@@ -2780,8 +2780,8 @@ int amdgpu_vm_init(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 	vm->evicting = false;
+ 	vm->tlb_fence_context = dma_fence_context_alloc(1);
+ 
+-	r = amdgpu_vm_pt_create(adev, vm, adev->vm_manager.root_level,
+-				false, &root, xcp_id);
++	r = amdgpu_vm_pt_create(adev, vm, adev->vm_manager.root_level, false,
++				&root, xcp_id);
+ 	if (r)
+ 		goto error_free_delayed;
+ 
+@@ -2797,7 +2797,7 @@ int amdgpu_vm_init(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 	if (r)
+ 		goto error_free_root;
+ 
+-	r = amdgpu_vm_pt_clear(adev, vm, root, false);
++	r = amdgpu_vm_pt_clear(&ctx, root, false);
+ 	if (r)
+ 		goto error_free_root;
+ 
+@@ -2816,6 +2816,7 @@ int amdgpu_vm_init(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 
+ 	amdgpu_bo_unreserve(vm->root.bo);
+ 	amdgpu_bo_unref(&root_bo);
++	amdgpu_vm_update_ctx_fini(&ctx);
+ 
+ 	return 0;
+ 
+@@ -2833,6 +2834,7 @@ error_free_delayed:
+ 	dma_fence_put(vm->last_tlb_flush);
+ 	dma_fence_put(vm->last_unlocked);
+ 	ttm_lru_bulk_move_fini(&adev->mman.bdev, &vm->lru_bulk_move);
++	amdgpu_vm_update_ctx_fini(&ctx);
+ 	amdgpu_vm_fini_entities(vm);
+ 
+ 	return r;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+index 904948ba6a77..a2d7ab500e83 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+@@ -315,12 +315,7 @@ struct amdgpu_vm_update_params {
+ 	/**
+ 	 * @adev: amdgpu device we do this update for
+ 	 */
+-	struct amdgpu_device *adev;
+-
+-	/**
+-	 * @vm: optional amdgpu_vm we do this update for
+-	 */
+-	struct amdgpu_vm *vm;
++	struct amdgpu_vm_update_ctx *ctx;
+ 
+ 	/**
+ 	 * @immediate: if changes should be made immediately
+@@ -650,7 +645,7 @@ void amdgpu_vm_move_to_lru_tail(struct amdgpu_device *adev,
+ void amdgpu_vm_get_memory(struct amdgpu_vm *vm,
+ 			  struct amdgpu_mem_stats stats[__AMDGPU_PL_NUM]);
+ 
+-int amdgpu_vm_pt_clear(struct amdgpu_device *adev, struct amdgpu_vm *vm,
++int amdgpu_vm_pt_clear(struct amdgpu_vm_update_ctx *ctx,
+ 		       struct amdgpu_bo_vm *vmbo, bool immediate);
+ int amdgpu_vm_pt_create(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 			int level, bool immediate, struct amdgpu_bo_vm **vmbo,
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_cpu.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_cpu.c
+index b31ff6f56f0d..1a3d3f306f9f 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_cpu.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_cpu.c
+@@ -89,7 +89,7 @@ static int amdgpu_vm_cpu_update(struct amdgpu_vm_update_params *p,
+ 	trace_amdgpu_vm_set_ptes(pe, addr, count, incr, flags, p->immediate);
+ 
+ 	if (!p->pages_addr && p->override_pte)
+-		amdgpu_gmc_override_vm_pte_flags(p->adev, p->vm, addr, &flags);
++		amdgpu_gmc_override_vm_pte_flags(p->ctx->adev, p->ctx->vm, addr, &flags);
+ 
+ 	for (i = 0; i < count; i++) {
+ 		u64 oflags = flags;
+@@ -99,9 +99,9 @@ static int amdgpu_vm_cpu_update(struct amdgpu_vm_update_params *p,
+ 			addr;
+ 
+ 		if (p->pages_addr && p->override_pte)
+-			amdgpu_gmc_override_vm_pte_flags(p->adev, p->vm, value, &oflags);
++			amdgpu_gmc_override_vm_pte_flags(p->ctx->adev, p->ctx->vm, value, &oflags);
+ 
+-		amdgpu_gmc_set_pte_pde(p->adev, (void *)(uintptr_t)pe,
++		amdgpu_gmc_set_pte_pde(p->ctx->adev, (void *)(uintptr_t)pe,
+ 				       i, value, oflags);
+ 		addr += incr;
+ 	}
+@@ -119,10 +119,10 @@ static int amdgpu_vm_cpu_update(struct amdgpu_vm_update_params *p,
+ static int amdgpu_vm_cpu_commit(struct amdgpu_vm_update_params *p,
+ 				struct dma_fence **fence)
+ {
+-	struct amdgpu_device *adev = p->adev;
++	struct amdgpu_device *adev = p->ctx->adev;
+ 
+ 	if (p->needs_flush)
+-		atomic64_inc(&p->vm->tlb_seq);
++		atomic64_inc(&p->ctx->vm->tlb_seq);
+ 
+ 	mb();
+ 	/* A reset flushed the HDP anyway, so that here can be skipped when a reset is ongoing */
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_pt.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_pt.c
+index ac8b63d1b3f0..64fb6ba0a55c 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_pt.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_pt.c
+@@ -358,10 +358,10 @@ static void amdgpu_vm_pt_next_dfs(struct amdgpu_device *adev,
+  * Returns:
+  * 0 on success, errno otherwise.
+  */
+-int amdgpu_vm_pt_clear(struct amdgpu_device *adev, struct amdgpu_vm *vm,
++int amdgpu_vm_pt_clear(struct amdgpu_vm_update_ctx *update_ctx,
+ 		       struct amdgpu_bo_vm *vmbo, bool immediate)
+ {
+-	unsigned int level = adev->vm_manager.root_level;
++	unsigned int level = update_ctx->adev->vm_manager.root_level;
+ 	struct ttm_operation_ctx ctx = { true, false };
+ 	struct amdgpu_vm_update_params params;
+ 	struct amdgpu_bo *ancestor = &vmbo->bo;
+@@ -386,43 +386,42 @@ int amdgpu_vm_pt_clear(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 	if (r)
+ 		return r;
+ 
+-	if (!drm_dev_enter(adev_to_drm(adev), &idx))
++	if (!drm_dev_enter(adev_to_drm(update_ctx->adev), &idx))
+ 		return -ENODEV;
+ 
+-	r = vm->update_funcs->map_table(vmbo);
++	r = update_ctx->vm->update_funcs->map_table(vmbo);
+ 	if (r)
+ 		goto exit;
+ 
+ 	memset(&params, 0, sizeof(params));
+-	params.adev = adev;
+-	params.vm = vm;
++	params.ctx = update_ctx;
+ 	params.immediate = immediate;
+ 
+-	r = vm->update_funcs->prepare(&params, NULL,
+-				      AMDGPU_KERNEL_JOB_ID_VM_PT_CLEAR);
++	r = update_ctx->vm->update_funcs->prepare(
++		&params, NULL, AMDGPU_KERNEL_JOB_ID_VM_PT_CLEAR);
+ 	if (r)
+ 		goto exit;
+ 
+ 	addr = 0;
+ 
+-	if (adev->asic_type >= CHIP_VEGA10) {
++	if (update_ctx->adev->asic_type >= CHIP_VEGA10) {
+ 		if (level != AMDGPU_VM_PTB) {
+ 			/* Handle leaf PDEs as PTEs */
+-			flags |= AMDGPU_PDE_PTE_FLAG(adev);
+-			amdgpu_gmc_get_vm_pde(adev, level,
+-					      &value, &flags);
++			flags |= AMDGPU_PDE_PTE_FLAG(update_ctx->adev);
++			amdgpu_gmc_get_vm_pde(update_ctx->adev, level, &value,
++					      &flags);
+ 		} else {
+ 			/* Workaround for fault priority problem on GMC9 */
+-			flags = AMDGPU_PTE_EXECUTABLE | adev->gmc.init_pte_flags;
++			flags = AMDGPU_PTE_EXECUTABLE | update_ctx->adev->gmc.init_pte_flags;
+ 		}
+ 	}
+ 
+-	r = vm->update_funcs->update(&params, vmbo, addr, 0, entries,
+-				     value, flags);
++	r = update_ctx->vm->update_funcs->update(&params, vmbo, addr, 0,
++						 entries, value, flags);
+ 	if (r)
+ 		goto exit;
+ 
+-	r = vm->update_funcs->commit(&params, NULL);
++	r = update_ctx->vm->update_funcs->commit(&params, NULL);
+ exit:
+ 	drm_dev_exit(idx);
+ 	return r;
+@@ -493,8 +492,7 @@ int amdgpu_vm_pt_create(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+  * 1 if page table needed to be allocated, 0 if page table was already
+  * allocated, negative errno if an error occurred.
+  */
+-static int amdgpu_vm_pt_alloc(struct amdgpu_device *adev,
+-			      struct amdgpu_vm *vm,
++static int amdgpu_vm_pt_alloc(struct amdgpu_vm_update_ctx *ctx,
+ 			      struct amdgpu_vm_pt_cursor *cursor,
+ 			      bool immediate)
+ {
+@@ -506,10 +504,10 @@ static int amdgpu_vm_pt_alloc(struct amdgpu_device *adev,
+ 	if (entry->bo)
+ 		return 0;
+ 
+-	amdgpu_vm_eviction_unlock(vm);
+-	r = amdgpu_vm_pt_create(adev, vm, cursor->level, immediate, &pt,
+-				vm->root.bo->xcp_id);
+-	amdgpu_vm_eviction_lock(vm);
++	amdgpu_vm_eviction_unlock(ctx->vm);
++	r = amdgpu_vm_pt_create(ctx->adev, ctx->vm, cursor->level, immediate,
++				&pt, ctx->vm->root.bo->xcp_id);
++	amdgpu_vm_eviction_lock(ctx->vm);
+ 	if (r)
+ 		return r;
+ 
+@@ -518,8 +516,8 @@ static int amdgpu_vm_pt_alloc(struct amdgpu_device *adev,
+ 	 */
+ 	pt_bo = &pt->bo;
+ 	pt_bo->parent = amdgpu_bo_ref(cursor->parent->bo);
+-	amdgpu_vm_bo_base_init(adev, entry, vm, pt_bo);
+-	r = amdgpu_vm_pt_clear(adev, vm, pt, immediate);
++	amdgpu_vm_bo_base_init(ctx->adev, entry, ctx->vm, pt_bo);
++	r = amdgpu_vm_pt_clear(ctx, pt, immediate);
+ 	if (r)
+ 		goto error_free_pt;
+ 
+@@ -588,7 +586,7 @@ static void amdgpu_vm_pt_add_list(struct amdgpu_vm_update_params *params,
+ 	struct amdgpu_vm_pt_cursor seek;
+ 	struct amdgpu_vm_bo_base *entry;
+ 
+-	for_each_amdgpu_vm_pt_dfs_safe(params->adev, params->vm, cursor, seek, entry) {
++	for_each_amdgpu_vm_pt_dfs_safe(params->ctx->adev, params->ctx->vm, cursor, seek, entry) {
+ 		if (entry && entry->bo)
+ 			list_move(&entry->vm_status, &params->tlb_flush_waitlist);
+ 	}
+@@ -628,7 +626,7 @@ int amdgpu_vm_pde_update(struct amdgpu_vm_update_params *params,
+ {
+ 	struct amdgpu_vm_bo_base *parent = amdgpu_vm_pt_parent(entry);
+ 	struct amdgpu_bo *bo, *pbo;
+-	struct amdgpu_vm *vm = params->vm;
++	struct amdgpu_vm *vm = params->ctx->vm;
+ 	uint64_t pde, pt, flags;
+ 	unsigned int level;
+ 
+@@ -639,7 +637,7 @@ int amdgpu_vm_pde_update(struct amdgpu_vm_update_params *params,
+ 	for (level = 0, pbo = bo->parent; pbo; ++level)
+ 		pbo = pbo->parent;
+ 
+-	level += params->adev->vm_manager.root_level;
++	level += params->ctx->adev->vm_manager.root_level;
+ 	amdgpu_gmc_get_pde_for_bo(entry->bo, level, &pt, &flags);
+ 	pde = (entry - to_amdgpu_bo_vm(parent->bo)->entries) * 8;
+ 	return vm->update_funcs->update(params, to_amdgpu_bo_vm(bo), pde, pt,
+@@ -679,15 +677,15 @@ static void amdgpu_vm_pte_update_flags(struct amdgpu_vm_update_params *params,
+ 				       unsigned int count, uint32_t incr,
+ 				       uint64_t flags)
+ {
+-	struct amdgpu_device *adev = params->adev;
++	struct amdgpu_device *adev = params->ctx->adev;
+ 
+ 	if (level != AMDGPU_VM_PTB) {
+-		flags |= AMDGPU_PDE_PTE_FLAG(params->adev);
++		flags |= AMDGPU_PDE_PTE_FLAG(params->ctx->adev);
+ 		amdgpu_gmc_get_vm_pde(adev, level, &addr, &flags);
+ 
+ 	} else if (adev->asic_type >= CHIP_VEGA10 &&
+ 		   !(flags & AMDGPU_PTE_VALID) &&
+-		   !(flags & AMDGPU_PTE_PRT_FLAG(params->adev))) {
++		   !(flags & AMDGPU_PTE_PRT_FLAG(params->ctx->adev))) {
+ 
+ 		/* Workaround for fault priority problem on GMC9 and GFX12,
+ 		 * EXECUTABLE for GMC9 fault priority and init_pte_flags
+@@ -706,7 +704,7 @@ static void amdgpu_vm_pte_update_flags(struct amdgpu_vm_update_params *params,
+ 	if (level == AMDGPU_VM_PTB)
+ 		amdgpu_vm_pte_update_noretry_flags(adev, &flags);
+ 
+-	params->vm->update_funcs->update(params, pt, pe, addr, count, incr,
++	params->ctx->vm->update_funcs->update(params, pt, pe, addr, count, incr,
+ 					 flags);
+ }
+ 
+@@ -749,8 +747,8 @@ static void amdgpu_vm_pte_fragment(struct amdgpu_vm_update_params *params,
+ 	 */
+ 	unsigned int max_frag;
+ 
+-	if (params->adev->asic_type < CHIP_VEGA10)
+-		max_frag = params->adev->vm_manager.fragment_size;
++	if (params->ctx->adev->asic_type < CHIP_VEGA10)
++		max_frag = params->ctx->adev->vm_manager.fragment_size;
+ 	else
+ 		max_frag = 31;
+ 
+@@ -789,7 +787,7 @@ int amdgpu_vm_ptes_update(struct amdgpu_vm_update_params *params,
+ 			  uint64_t start, uint64_t end,
+ 			  uint64_t dst, uint64_t flags)
+ {
+-	struct amdgpu_device *adev = params->adev;
++	struct amdgpu_device *adev = params->ctx->adev;
+ 	struct amdgpu_vm_pt_cursor cursor;
+ 	uint64_t frag_start = start, frag_end;
+ 	unsigned int frag;
+@@ -800,7 +798,7 @@ int amdgpu_vm_ptes_update(struct amdgpu_vm_update_params *params,
+ 			       &frag_end);
+ 
+ 	/* walk over the address space and update the PTs */
+-	amdgpu_vm_pt_start(adev, params->vm, start, &cursor);
++	amdgpu_vm_pt_start(adev, params->ctx->vm, start, &cursor);
+ 	while (cursor.pfn < end) {
+ 		unsigned int shift, parent_shift, mask;
+ 		uint64_t incr, entry_end, pe_start;
+@@ -810,8 +808,8 @@ int amdgpu_vm_ptes_update(struct amdgpu_vm_update_params *params,
+ 			/* make sure that the page tables covering the
+ 			 * address range are actually allocated
+ 			 */
+-			r = amdgpu_vm_pt_alloc(params->adev, params->vm,
+-					       &cursor, params->immediate);
++			r = amdgpu_vm_pt_alloc(params->ctx, &cursor,
++					       params->immediate);
+ 			if (r)
+ 				return r;
+ 		}
+@@ -881,7 +879,7 @@ int amdgpu_vm_ptes_update(struct amdgpu_vm_update_params *params,
+ 		entry_end = min(entry_end, end);
+ 
+ 		do {
+-			struct amdgpu_vm *vm = params->vm;
++			struct amdgpu_vm *vm = params->ctx->vm;
+ 			uint64_t upd_end = min(entry_end, frag_end);
+ 			unsigned int nptes = (upd_end - frag_start) >> shift;
+ 			uint64_t upd_flags = flags | AMDGPU_PTE_FRAG(frag);
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_sdma.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_sdma.c
+index 2eb64df6daa9..4edf7fc850b1 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_sdma.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm_sdma.c
+@@ -44,8 +44,8 @@ static int amdgpu_vm_sdma_alloc_job(struct amdgpu_vm_update_params *p,
+ {
+ 	enum amdgpu_ib_pool_type pool = p->immediate ? AMDGPU_IB_POOL_IMMEDIATE
+ 		: AMDGPU_IB_POOL_DELAYED;
+-	struct drm_sched_entity *entity = p->immediate ? &p->vm->immediate
+-		: &p->vm->delayed;
++	struct drm_sched_entity *entity =
++		p->immediate ? &p->ctx->vm->immediate : &p->ctx->vm->delayed;
+ 	unsigned int ndw;
+ 	int r;
+ 
+@@ -55,8 +55,9 @@ static int amdgpu_vm_sdma_alloc_job(struct amdgpu_vm_update_params *p,
+ 		ndw += count * 2;
+ 	ndw = min(ndw, AMDGPU_VM_SDMA_MAX_NUM_DW);
+ 
+-	r = amdgpu_job_alloc_with_ib(p->adev, entity, AMDGPU_FENCE_OWNER_VM,
+-				     ndw * 4, pool, &p->job, k_job_id);
++	r = amdgpu_job_alloc_with_ib(p->ctx->adev, entity,
++				     AMDGPU_FENCE_OWNER_VM, ndw * 4, pool,
++				     &p->job, k_job_id);
+ 	if (r)
+ 		return r;
+ 
+@@ -110,14 +111,14 @@ static int amdgpu_vm_sdma_commit(struct amdgpu_vm_update_params *p,
+ 	struct amdgpu_ring *ring;
+ 	struct dma_fence *f;
+ 
+-	ring = container_of(p->vm->delayed.rq->sched, struct amdgpu_ring,
++	ring = container_of(p->ctx->vm->delayed.rq->sched, struct amdgpu_ring,
+ 			    sched);
+ 
+ 	WARN_ON(ib->length_dw == 0);
+ 	amdgpu_ring_pad_ib(ring, ib);
+ 
+ 	if (p->needs_flush)
+-		atomic64_inc(&p->vm->tlb_seq);
++		atomic64_inc(&p->ctx->vm->tlb_seq);
+ 
+ 	WARN_ON(ib->length_dw > p->num_dw_left);
+ 	f = amdgpu_job_submit(p->job);
+@@ -125,10 +126,10 @@ static int amdgpu_vm_sdma_commit(struct amdgpu_vm_update_params *p,
+ 	if (p->unlocked) {
+ 		struct dma_fence *tmp = dma_fence_get(f);
+ 
+-		swap(p->vm->last_unlocked, tmp);
++		swap(p->ctx->vm->last_unlocked, tmp);
+ 		dma_fence_put(tmp);
+ 	} else {
+-		dma_resv_add_fence(p->vm->root.bo->tbo.base.resv, f,
++		dma_resv_add_fence(p->ctx->vm->root.bo->tbo.base.resv, f,
+ 				   DMA_RESV_USAGE_BOOKKEEP);
+ 	}
+ 
+@@ -167,7 +168,7 @@ static void amdgpu_vm_sdma_copy_ptes(struct amdgpu_vm_update_params *p,
+ 	pe += amdgpu_bo_gpu_offset_no_check(bo);
+ 	trace_amdgpu_vm_copy_ptes(pe, src, count, p->immediate);
+ 
+-	amdgpu_vm_copy_pte(p->adev, ib, pe, src, count);
++	amdgpu_vm_copy_pte(p->ctx->adev, ib, pe, src, count);
+ }
+ 
+ /**
+@@ -194,11 +195,11 @@ static void amdgpu_vm_sdma_set_ptes(struct amdgpu_vm_update_params *p,
+ 	pe += amdgpu_bo_gpu_offset_no_check(bo);
+ 	trace_amdgpu_vm_set_ptes(pe, addr, count, incr, flags, p->immediate);
+ 	if (count < 3) {
+-		amdgpu_vm_write_pte(p->adev, ib, pe, addr | flags,
+-				    count, incr);
++		amdgpu_vm_write_pte(p->ctx->adev, ib, pe, addr | flags, count,
++				    incr);
+ 	} else {
+-		amdgpu_vm_set_pte_pde(p->adev, ib, pe, addr,
+-				      count, incr, flags);
++		amdgpu_vm_set_pte_pde(p->ctx->adev, ib, pe, addr, count, incr,
++				      flags);
+ 	}
+ }
+ 
+@@ -258,7 +259,7 @@ static int amdgpu_vm_sdma_update(struct amdgpu_vm_update_params *p,
+ 
+ 		if (!p->pages_addr) {
+ 			if (p->override_pte)
+-				amdgpu_gmc_override_vm_pte_flags(p->adev, p->vm, addr, &flags);
++				amdgpu_gmc_override_vm_pte_flags(p->ctx->adev, p->ctx->vm, addr, &flags);
+ 
+ 			/* set page commands needed */
+ 			amdgpu_vm_sdma_set_ptes(p, bo, pe, addr, count,
+@@ -267,7 +268,7 @@ static int amdgpu_vm_sdma_update(struct amdgpu_vm_update_params *p,
+ 		}
+ 
+ 		/* copy commands needed */
+-		ndw -= p->adev->vm_manager.vm_pte_funcs->copy_pte_num_dw;
++		ndw -= p->ctx->adev->vm_manager.vm_pte_funcs->copy_pte_num_dw;
+ 
+ 		/* for padding */
+ 		ndw -= 7;
+@@ -283,7 +284,7 @@ static int amdgpu_vm_sdma_update(struct amdgpu_vm_update_params *p,
+ 			pte[i] = amdgpu_vm_map_gart(p->pages_addr, addr);
+ 
+ 			if (p->override_pte)
+-				amdgpu_gmc_override_vm_pte_flags(p->adev, p->vm, pte[i], &oflags);
++				amdgpu_gmc_override_vm_pte_flags(p->ctx->adev, p->ctx->vm, pte[i], &oflags);
+ 
+ 			pte[i] |= oflags;
+ 		}
+-- 
+2.55.0
+

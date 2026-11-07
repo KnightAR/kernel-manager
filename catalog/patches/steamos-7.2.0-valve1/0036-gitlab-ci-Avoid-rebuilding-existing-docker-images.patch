@@ -1,0 +1,92 @@
+From 2413f7d57c1905957040b6dc175e20871a8bd7c5 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Sat, 2 Mar 2024 00:23:44 +0200
+Subject: [PATCH] gitlab-ci: Avoid rebuilding existing docker images
+
+Add pipeline job to verify if the docker image to be built does already
+exist and pass the result further via artifacts:reports:dotenv.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 40 ++++++++++++++++++++++++++++++++++------
+ 1 file changed, 34 insertions(+), 6 deletions(-)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 32c4fc99c99c..fbf5eeccae27 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -14,17 +14,38 @@ workflow:
+     - if: $CI_COMMIT_BRANCH
+ 
+ stages:
+-  - docker-image
+-  - kernel-build
++  - check-image
++  - build-image
++  - build-kernel
++
++.check-docker-image:
++  stage: check-image
++  image:
++    name: gcr.io/go-containerregistry/crane/debug:v0.15.0
++    entrypoint: [""]
++  variables:
++    GIT_STRATEGY: none
++  script:
++    - crane auth login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
++    - >
++      crane manifest $CI_REGISTRY_IMAGE/$IMAGE_NAME:$IMAGE_TAG
++      && IMAGE_EXISTS=1 || IMAGE_EXISTS=0
++    - echo "IMAGE_EXISTS=$IMAGE_EXISTS" > check-image.env
++  artifacts:
++    reports:
++      dotenv: check-image.env
+ 
+ .build-docker-image:
++  stage: build-image
+   image:
+     name: gcr.io/kaniko-project/executor:v1.21.0-debug
+     entrypoint: [""]
+-  stage: docker-image
+-  only:
+-    - branches
+   script:
++    - |
++      if [ $IMAGE_EXISTS -eq 1 ]; then
++        echo "Skip building $IMAGE_NAME:$IMAGE_TAG"
++        exit 0
++      fi
+     - mkdir -p /kaniko/.docker/
+     - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+     - >
+@@ -50,18 +71,25 @@ stages:
+   tags:
+     - autoscaled
+ 
++check-debian-kernel-builder:
++  extends:
++    - .check-docker-image
++    - .prep-debian-kernel-builder
++
+ build-debian-kernel-builder:
+   extends:
+     - .build-docker-image
+     - .prep-debian-kernel-builder
++  needs:
++    - check-debian-kernel-builder
+ 
+ .use-debian-kernel-builder:
++  stage: build-kernel
+   extends:
+     - .use-docker-image
+     - .prep-debian-kernel-builder
+   needs:
+     - build-debian-kernel-builder
+-  stage: kernel-build
+ 
+ build-kernel-test-qemu:
+   extends:
+-- 
+2.55.0
+

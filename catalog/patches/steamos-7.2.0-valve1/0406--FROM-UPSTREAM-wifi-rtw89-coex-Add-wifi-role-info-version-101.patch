@@ -1,0 +1,239 @@
+From 76a312f3d404e07511b11773886ce18f4e0beabb Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Fri, 17 Jul 2026 14:57:38 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Add wifi role info version
+ 101
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The structure active_role which describes the using Wi-Fi role format is
+different with the exist v1. Add branch to cover the difference.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260717065739.64124-13-pkshih@realtek.com
+(cherry picked from commit 236badaa50b3a2d27543d8024ae5c78cd242615d)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/coex.c | 13 ++--
+ drivers/net/wireless/realtek/rtw89/fw.c   | 82 +++++++++++++++++++++++
+ drivers/net/wireless/realtek/rtw89/fw.h   | 35 ++++++++++
+ 3 files changed, 125 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/coex.c b/drivers/net/wireless/realtek/rtw89/coex.c
+index 54c11af46f8d..b95e34cb1567 100644
+--- a/drivers/net/wireless/realtek/rtw89/coex.c
++++ b/drivers/net/wireless/realtek/rtw89/coex.c
+@@ -3198,6 +3198,8 @@ static void _fw_set_drv_info(struct rtw89_dev *rtwdev, u8 index)
+ 			rtw89_fw_h2c_cxdrv_role(rtwdev, index);
+ 		else if (ver->fwlrole == 1)
+ 			rtw89_fw_h2c_cxdrv_role_v1(rtwdev, index);
++		else if (ver->fwlrole == 101)
++			rtw89_fw_h2c_cxdrv_role_v101(rtwdev, index);
+ 		else if (ver->fwlrole == 2)
+ 			rtw89_fw_h2c_cxdrv_role_v2(rtwdev, index);
+ 		else if (ver->fwlrole == 7)
+@@ -6873,6 +6875,7 @@ static void _update_wl_link_mode(struct rtw89_dev *rtwdev, u8 hw_band, u8 type)
+ 	struct rtw89_btc_wl_mlo_info *mlo_info = &wl->mlo_info;
+ 	struct rtw89_btc_wl_role_info *r = &wl->role_info;
+ 	u8 p2p_exist = wl->role_info.p2p_exist;
++	u8 rver = ver->fwlrole;
+ 
+ 	if (hw_band == RTW89_PHY_1)
+ 		p2p_exist = wl->role_info.p2p_exist_hb1;
+@@ -6893,7 +6896,7 @@ static void _update_wl_link_mode(struct rtw89_dev *rtwdev, u8 hw_band, u8 type)
+ 			r->link_mode = BTC_WLINK_STA;
+ 		}
+ 
+-		if (ver->fwlrole >= 10)
++		if (rver >= 10 && rver < 100)
+ 			break;
+ 
+ 		if (mlo_info->hwb_rf_band[hw_band] != RTW89_BAND_2G) {
+@@ -6921,7 +6924,7 @@ static void _update_wl_link_mode(struct rtw89_dev *rtwdev, u8 hw_band, u8 type)
+ 			r->link_mode = BTC_WLINK_SCC;
+ 		}
+ 
+-		if (ver->fwlrole >= 10)
++		if (rver >= 10 && rver < 100)
+ 			break;
+ 
+ 		if (mlo_info->hwb_rf_band[hw_band] != RTW89_BAND_2G) {
+@@ -6941,7 +6944,7 @@ static void _update_wl_link_mode(struct rtw89_dev *rtwdev, u8 hw_band, u8 type)
+ 		else
+ 			r->link_mode = BTC_WLINK_STA;
+ 
+-		if (ver->fwlrole >= 10)
++		if (rver >= 10 && rver < 100)
+ 			break;
+ 
+ 		if (mlo_info->hwb_rf_band[hw_band] != RTW89_BAND_2G)
+@@ -6959,7 +6962,7 @@ static void _update_wl_link_mode(struct rtw89_dev *rtwdev, u8 hw_band, u8 type)
+ 		 */
+ 		r->link_mode = BTC_WLINK_DB_MCC;
+ 
+-		if (ver->fwlrole >= 10)
++		if (rver >= 10 && rver < 100)
+ 			break;
+ 
+ 		r->link_mode_v0 = BTC_WLINK_V0_25G_MCC;
+@@ -6968,7 +6971,7 @@ static void _update_wl_link_mode(struct rtw89_dev *rtwdev, u8 hw_band, u8 type)
+ 		/* MLMR only support STA now (2024) */
+ 		r->link_mode = BTC_WLINK_STA;
+ 
+-		if (ver->fwlrole >= 10)
++		if (rver >= 10 && rver < 100)
+ 			break;
+ 
+ 		if (mlo_info->hwb_rf_band[hw_band] != RTW89_BAND_2G) {
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.c b/drivers/net/wireless/realtek/rtw89/fw.c
+index aee0f6cdaa9c..4f3d9688968c 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.c
++++ b/drivers/net/wireless/realtek/rtw89/fw.c
+@@ -6151,6 +6151,88 @@ fail:
+ 	return ret;
+ }
+ 
++int rtw89_fw_h2c_cxdrv_role_v101(struct rtw89_dev *rtwdev, u8 type)
++{
++	struct rtw89_btc *btc = &rtwdev->btc;
++	struct rtw89_btc_wl_info *wl = &btc->cx.wl;
++	struct rtw89_btc_wl_role_info *role_info = &wl->role_info;
++	struct rtw89_btc_wl_rlink *active;
++	struct rtw89_h2c_cxrole_v101 *h2c;
++	u32 len = sizeof(*h2c);
++	struct sk_buff *skb;
++	int ret;
++	u8 i;
++
++	skb = rtw89_fw_h2c_alloc_skb_with_hdr(rtwdev, len);
++	if (!skb) {
++		rtw89_err(rtwdev, "failed to alloc skb for h2c cxdrv_role_v101\n");
++		return -ENOMEM;
++	}
++	skb_put(skb, len);
++	h2c = (struct rtw89_h2c_cxrole_v101 *)skb->data;
++
++	h2c->hdr.type = type;
++	h2c->hdr.len = len - H2C_LEN_CXDRVHDR;
++
++	h2c->connect_cnt = role_info->connect_cnt;
++	h2c->link_mode = role_info->link_mode;
++	h2c->role_map = cpu_to_le16(role_info->role_map);
++
++	for (i = 0; i < RTW89_PORT_NUM; i++) {
++		active = &role_info->rlink[i][0];
++		h2c->act_role[i].map_role_status =
++			u8_encode_bits(active->connected,
++				       RTW89_H2C_CXROLE_V101_ROLE_STAT_CONNTECTED) |
++			u8_encode_bits(active->pid,
++				       RTW89_H2C_CXROLE_V101_ROLE_STAT_PID) |
++			u8_encode_bits(active->phy,
++				       RTW89_H2C_CXROLE_V101_ROLE_STAT_PHY) |
++			u8_encode_bits(active->noa,
++				       RTW89_H2C_CXROLE_V101_ROLE_STAT_NOA) |
++			u8_encode_bits(active->rf_band,
++				       RTW89_H2C_CXROLE_V101_ROLE_STAT_BADN);
++		h2c->act_role[i].map_clips_bw =
++			u8_encode_bits(active->client_ps,
++				       RTW89_H2C_CXROLE_V101_CLIPS_BW_CLIENTPS) |
++			u8_encode_bits(active->bw,
++				       RTW89_H2C_CXROLE_V101_CLIPS_BW_BW);
++		h2c->act_role[i].role = active->role;
++		h2c->act_role[i].ch = active->ch;
++		h2c->act_role[i].noa_duration = cpu_to_le32(active->noa_dur);
++	}
++
++	h2c->mrole_type = cpu_to_le32(role_info->mrole_type);
++	h2c->mrole_noa_duration = cpu_to_le32(role_info->mrole_noa_duration);
++	h2c->map_dbcc_linkmode_chg =
++		le32_encode_bits(role_info->dbcc_en,
++				 RTW89_H2C_CXROLE_V101_DBCC_EN) |
++		le32_encode_bits(role_info->dbcc_chg,
++				 RTW89_H2C_CXROLE_V101_DBCC_CHG) |
++		le32_encode_bits(role_info->dbcc_2g_phy,
++				 RTW89_H2C_CXROLE_V101_DBCC_2G_PHY) |
++		le32_encode_bits(role_info->link_mode_chg,
++				 RTW89_H2C_CXROLE_V101_DBCC_LINKMODE_CHG) |
++		le32_encode_bits(role_info->rsvd,
++				 RTW89_H2C_CXROLE_V101_DBCC_RSVD);
++
++	rtw89_h2c_pkt_set_hdr(rtwdev, skb, FWCMD_TYPE_H2C,
++			      H2C_CAT_OUTSRC, BTFC_SET,
++			      SET_DRV_INFO, 0, 0,
++			      len);
++
++	ret = rtw89_h2c_tx(rtwdev, skb, false);
++	if (ret) {
++		rtw89_err(rtwdev, "failed to send h2c\n");
++		goto fail;
++	}
++
++	return 0;
++fail:
++	dev_kfree_skb_any(skb);
++
++	return ret;
++}
++
+ #define H2C_LEN_CXDRVINFO_ROLE_SIZE_V2(max_role_num) \
+ 	(4 + 8 * (max_role_num) + H2C_LEN_CXDRVINFO_ROLE_DBCC_LEN + H2C_LEN_CXDRVHDR)
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.h b/drivers/net/wireless/realtek/rtw89/fw.h
+index 38090105b412..e86014ca249a 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.h
++++ b/drivers/net/wireless/realtek/rtw89/fw.h
+@@ -2603,6 +2603,40 @@ struct rtw89_h2c_cxinit_v10 {
+ 	struct rtw89_btc_init_info_v10 init;
+ } __packed;
+ 
++#define RTW89_H2C_CXROLE_V101_ROLE_STAT_CONNTECTED BIT(0)
++#define RTW89_H2C_CXROLE_V101_ROLE_STAT_PID GENMASK(3, 1)
++#define RTW89_H2C_CXROLE_V101_ROLE_STAT_PHY BIT(4)
++#define RTW89_H2C_CXROLE_V101_ROLE_STAT_NOA BIT(5)
++#define RTW89_H2C_CXROLE_V101_ROLE_STAT_BADN GENMASK(7, 6)
++
++#define RTW89_H2C_CXROLE_V101_CLIPS_BW_CLIENTPS BIT(0)
++#define RTW89_H2C_CXROLE_V101_CLIPS_BW_BW GENMASK(7, 1)
++
++#define RTW89_H2C_CXROLE_V101_DBCC_EN BIT(0)
++#define RTW89_H2C_CXROLE_V101_DBCC_CHG BIT(1)
++#define RTW89_H2C_CXROLE_V101_DBCC_2G_PHY GENMASK(3, 2)
++#define RTW89_H2C_CXROLE_V101_DBCC_LINKMODE_CHG BIT(4)
++#define RTW89_H2C_CXROLE_V101_DBCC_RSVD GENMASK(31, 5)
++
++struct rtw89_btc_wl_active_role_v101 {
++	u8 map_role_status;
++	u8 map_clips_bw;
++	u8 role;
++	u8 ch;
++	__le32 noa_duration;
++} __packed;
++
++struct rtw89_h2c_cxrole_v101 {
++	struct rtw89_h2c_cxhdr hdr;
++	u8 connect_cnt;
++	u8 link_mode;
++	__le16 role_map;
++	struct rtw89_btc_wl_active_role_v101 act_role[RTW89_PORT_NUM];
++	__le32 mrole_type;
++	__le32 mrole_noa_duration;
++	__le32 map_dbcc_linkmode_chg;
++} __packed;
++
+ static inline void RTW89_SET_FWCMD_CXROLE_CONNECT_CNT(void *cmd, u8 val)
+ {
+ 	u8p_replace_bits((u8 *)(cmd) + 2, val, GENMASK(7, 0));
+@@ -5417,6 +5451,7 @@ int rtw89_fw_h2c_cxdrv_init_v7(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_init_v10(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_role(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_role_v1(struct rtw89_dev *rtwdev, u8 type);
++int rtw89_fw_h2c_cxdrv_role_v101(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_role_v2(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_role_v7(struct rtw89_dev *rtwdev, u8 type);
+ int rtw89_fw_h2c_cxdrv_role_v8(struct rtw89_dev *rtwdev, u8 type);
+-- 
+2.55.0
+

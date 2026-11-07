@@ -1,0 +1,216 @@
+From 1a7f943199b3668f72390e82c0412bf9b055cd73 Mon Sep 17 00:00:00 2001
+From: Ivan Orlov <ivan.orlov0322@gmail.com>
+Date: Fri, 16 Aug 2024 15:18:31 +0100
+Subject: [PATCH 04/10] menuconfig: Allow sorting the entries alphabetically
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Implement the functionality which allows to sort the Kconfig entries
+alphabetically if user decides to. It may help finding the desired entry
+faster, so the user will spend less time looking through the list.
+
+The sorting is done on the dialog_list elements in the 'dialog_menu'
+function, so on the option "representation" layer. The sorting could be
+enabled/disabled by pressing the '>' key. The labels are sorted in the
+following way:
+
+1. Put all entries into the array (from the linked list)
+2. Sort them alphabetically using qsort and custom comparator
+3. Restore the items linked list structure
+
+I know that this modification includes the ugly heruistics for
+extracting the actual label text from "    [ ] Some-option"-like
+expressions (to be able to alphabetically compare the labels), and I
+would be happy to discuss alternative solutions.
+
+Signed-off-by: Ivan Orlov <ivan.orlov0322@gmail.com>
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ scripts/kconfig/lxdialog/dialog.h  |  5 +-
+ scripts/kconfig/lxdialog/menubox.c |  7 ++-
+ scripts/kconfig/lxdialog/util.c    | 79 ++++++++++++++++++++++++++++++
+ scripts/kconfig/mconf.c            |  9 +++-
+ 4 files changed, 97 insertions(+), 3 deletions(-)
+
+diff --git a/scripts/kconfig/lxdialog/dialog.h b/scripts/kconfig/lxdialog/dialog.h
+index f6c2ebe6d1f9..a036ed8cb43c 100644
+--- a/scripts/kconfig/lxdialog/dialog.h
++++ b/scripts/kconfig/lxdialog/dialog.h
+@@ -58,6 +58,8 @@
+ #define ACS_DARROW 'v'
+ #endif
+ 
++#define KEY_ACTION_SORT 11
++
+ /* error return codes */
+ #define ERRDISPLAYTOOSMALL (KEY_MAX + 1)
+ 
+@@ -127,6 +129,7 @@ void item_set_selected(int val);
+ int item_activate_selected(void);
+ void *item_data(void);
+ char item_tag(void);
++void sort_items(void);
+ 
+ /* item list manipulation for lxdialog use */
+ #define MAXITEMSTR 200
+@@ -196,7 +199,7 @@ int dialog_textbox(const char *title, const char *tbuf, int initial_height,
+ 		   int initial_width, int *_vscroll, int *_hscroll,
+ 		   int (*extra_key_cb)(int, size_t, size_t, void *), void *data);
+ int dialog_menu(const char *title, const char *prompt,
+-		const void *selected, int *s_scroll);
++		const void *selected, int *s_scroll, bool sort);
+ int dialog_checklist(const char *title, const char *prompt, int height,
+ 		     int width, int list_height);
+ int dialog_inputbox(const char *title, const char *prompt, int height,
+diff --git a/scripts/kconfig/lxdialog/menubox.c b/scripts/kconfig/lxdialog/menubox.c
+index d4c19b7beebb..597b166e26eb 100644
+--- a/scripts/kconfig/lxdialog/menubox.c
++++ b/scripts/kconfig/lxdialog/menubox.c
+@@ -161,7 +161,7 @@ static void do_scroll(WINDOW *win, int *scroll, int n)
+  * Display a menu for choosing among a number of options
+  */
+ int dialog_menu(const char *title, const char *prompt,
+-		const void *selected, int *s_scroll)
++		const void *selected, int *s_scroll, bool sort)
+ {
+ 	int i, j, x, y, box_x, box_y;
+ 	int height, width, menu_height;
+@@ -181,6 +181,9 @@ int dialog_menu(const char *title, const char *prompt,
+ 
+ 	max_choice = MIN(menu_height, item_count());
+ 
++	if (sort)
++		sort_items();
++
+ 	/* center dialog box on screen */
+ 	x = (getmaxx(stdscr) - width) / 2;
+ 	y = (getmaxy(stdscr) - height) / 2;
+@@ -408,6 +411,8 @@ int dialog_menu(const char *title, const char *prompt,
+ 			delwin(menu);
+ 			delwin(dialog);
+ 			goto do_resize;
++		case '>':
++			return KEY_ACTION_SORT;
+ 		}
+ 	}
+ 	delwin(menu);
+diff --git a/scripts/kconfig/lxdialog/util.c b/scripts/kconfig/lxdialog/util.c
+index b34000beb294..e8c8f09f1bef 100644
+--- a/scripts/kconfig/lxdialog/util.c
++++ b/scripts/kconfig/lxdialog/util.c
+@@ -562,6 +562,85 @@ void item_reset(void)
+ 	item_cur = &item_nil;
+ }
+ 
++/*
++ * Function skips a part of the label to get the actual label text
++ * (without the '[ ]'-like prefix).
++ */
++static char *skip_spec_characters(char *s)
++{
++	bool unbalanced = false;
++
++	while (*s) {
++		if (isalnum(*s) && !unbalanced) {
++			break;
++		} else if (*s == '[' || *s == '<' || *s == '(') {
++			/*
++			 * '[', '<' or '(' means that we need to look for
++			 * closure
++			 */
++			unbalanced = true;
++		} else if (*s == '-') {
++			/*
++			 * Labels could start with "-*-", so '-' here either
++			 * opens or closes the "checkbox"
++			 */
++			unbalanced = !unbalanced;
++		} else if (*s == '>' || *s == ']' || *s == ')') {
++			unbalanced = false;
++		}
++		s++;
++	}
++	return s;
++}
++
++static int compare_labels(const void *a, const void *b)
++{
++	struct dialog_list *el1 = *((struct dialog_list **)a);
++	struct dialog_list *el2 = *((struct dialog_list **)b);
++
++	return strcasecmp(skip_spec_characters(el1->node.str),
++			  skip_spec_characters(el2->node.str));
++}
++
++void sort_items(void)
++{
++	struct dialog_list **arr;
++	struct dialog_list *cur;
++	size_t n, i;
++
++	n = item_count();
++	if (n == 0)
++		return;
++
++	/* Copy all items from linked list into array */
++	cur = item_head;
++	arr = malloc(sizeof(*arr) * n);
++
++	if (!arr) {
++		/* Don't have enough memory, so don't do anything */
++		return;
++	}
++
++	for (i = 0; i < n; i++) {
++		arr[i] = cur;
++		cur = cur->next;
++	}
++
++	qsort(arr, n, sizeof(struct dialog_list *), compare_labels);
++
++	/* Restore the linked list structure from the sorted array */
++	for (i = 0; i < n; i++) {
++		if (i < n - 1)
++			arr[i]->next = arr[i + 1];
++		else
++			arr[i]->next = NULL;
++	}
++
++	item_head = arr[0];
++
++	free(arr);
++}
++
+ void item_make(const char *fmt, ...)
+ {
+ 	va_list ap;
+diff --git a/scripts/kconfig/mconf.c b/scripts/kconfig/mconf.c
+index b8b7bba84a65..eb0ea0e4df4d 100644
+--- a/scripts/kconfig/mconf.c
++++ b/scripts/kconfig/mconf.c
+@@ -751,6 +751,7 @@ static void conf_save(void)
+ 	}
+ }
+ 
++static bool should_sort;
+ static void conf(struct menu *menu, struct menu *active_menu)
+ {
+ 	struct menu *submenu;
+@@ -776,9 +777,15 @@ static void conf(struct menu *menu, struct menu *active_menu)
+ 		dialog_clear();
+ 		res = dialog_menu(prompt ? prompt : "Main Menu",
+ 				  menu_instructions,
+-				  active_menu, &s_scroll);
++				  active_menu, &s_scroll, should_sort);
+ 		if (res == 1 || res == KEY_ESC || res == -ERRDISPLAYTOOSMALL)
+ 			break;
++
++		if (res == KEY_ACTION_SORT) {
++			should_sort = !should_sort;
++			continue;
++		}
++
+ 		if (item_count() != 0) {
+ 			if (!item_activate_selected())
+ 				continue;

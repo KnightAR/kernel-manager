@@ -1,0 +1,27 @@
+From 3cc83af2d13300939b8a176cf2bf086651fea9e8 Mon Sep 17 00:00:00 2001
+From: Joshua Ashton <joshua@froggi.es>
+Date: Wed, 19 Apr 2023 02:09:11 +0100
+Subject: [PATCH] drm/amd/display: Always use high res segments (TEST)
+
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/display/dc/dcn10/dcn10_cm_common.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/amd/display/dc/dcn10/dcn10_cm_common.c b/drivers/gpu/drm/amd/display/dc/dcn10/dcn10_cm_common.c
+index 502a2d9b155f..72013c5788c1 100644
+--- a/drivers/gpu/drm/amd/display/dc/dcn10/dcn10_cm_common.c
++++ b/drivers/gpu/drm/amd/display/dc/dcn10/dcn10_cm_common.c
+@@ -355,7 +355,8 @@ bool cm_helper_translate_curve_to_hw_format(struct dc_context *ctx,
+ 	memset(lut_params, 0, sizeof(struct pwl_params));
+ 	memset(seg_distr, 0, sizeof(seg_distr));
+ 
+-	if (output_tf->tf == TRANSFER_FUNCTION_PQ || output_tf->tf == TRANSFER_FUNCTION_GAMMA22) {
++	//if (output_tf->tf == TRANSFER_FUNCTION_PQ || output_tf->tf == TRANSFER_FUNCTION_GAMMA22) {
++	if (true) {
+ 		/* 32 segments
+ 		 * segments are from 2^-25 to 2^7
+ 		 */
+-- 
+2.55.0
+

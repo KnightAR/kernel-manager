@@ -1,0 +1,33 @@
+From f3fc2aa6f95d121be60fb62d2b02026372da6bae Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Tue, 7 Jul 2026 17:10:47 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: efuse: no need to export
+ rtw89_efuse_read_ecv_be()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The consumer of rtw89_efuse_read_ecv_be() is in the same ko. No need to
+export it.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260707091056.42771-7-pkshih@realtek.com
+(cherry picked from commit d193bdc73396110a1d803c51d6e99ee2b3e42c15)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/efuse_be.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/efuse_be.c b/drivers/net/wireless/realtek/rtw89/efuse_be.c
+index 70c1b8be662e..a716ad54fce5 100644
+--- a/drivers/net/wireless/realtek/rtw89/efuse_be.c
++++ b/drivers/net/wireless/realtek/rtw89/efuse_be.c
+@@ -537,4 +537,3 @@ int rtw89_efuse_read_ecv_be(struct rtw89_dev *rtwdev)
+ 
+ 	return 0;
+ }
+-EXPORT_SYMBOL(rtw89_efuse_read_ecv_be);
+-- 
+2.55.0
+

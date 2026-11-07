@@ -1,0 +1,89 @@
+From 9389a4f91a01cfac01fdb7119a75185538760de4 Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Wed, 24 Jul 2024 13:26:25 +0800
+Subject: [PATCH 06/25] wifi: rtw89: 885xb: reset IDMEM mode to prevent
+ download firmware failure
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+For different firmware type, it could change IDMEM mode, so reset it to
+default to avoid encountering error for RTL8851B/RTL8852B/RTL8852BT
+if that kind of firmware was downloaded before.
+
+    rtw89_8851be 0000:02:00.0: Firmware version 0.29.41.3, cmd version 0, type 5
+    rtw89_8851be 0000:02:00.0: Firmware version 0.29.41.3, cmd version 0, type 3
+    rtw89_8851be 0000:02:00.0: MAC has already powered on
+    rtw89_8851be 0000:02:00.0: fw security fail
+    rtw89_8851be 0000:02:00.0: download firmware fail
+    rtw89_8851be 0000:02:00.0: [ERR]fwdl 0x1E0 = 0x62
+    rtw89_8851be 0000:02:00.0: [ERR]fwdl 0x83F2 = 0x8
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f51c
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f524
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f51c
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f500
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f51c
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f53c
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f520
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f520
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f508
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f534
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f520
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f534
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f508
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f53c
+    rtw89_8851be 0000:02:00.0: [ERR]fw PC = 0xb892f524
+    rtw89_8851be 0000:02:00.0: failed to setup chip information
+    rtw89_8851be: probe of 0000:02:00.0 failed with error -16
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20240724052626.12774-4-pkshih@realtek.com
+From: https://bugs.gentoo.org/946802
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ drivers/net/wireless/realtek/rtw89/core.h | 11 +++++++++++
+ drivers/net/wireless/realtek/rtw89/mac.c  |  2 +-
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index 16aad0f8393a..f1243e54e5f7 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -109,6 +109,7 @@ enum rtw89_hci_type {
+ enum rtw89_core_chip_id {
+ 	RTL8852A,
+ 	RTL8852B,
++	RTL8852BT,
+ 	RTL8852C,
+ 	RTL8851B,
+ 	RTL8922A,
+@@ -5320,6 +5321,16 @@ static inline void rtw89_core_tx_wait_complete(struct rtw89_dev *rtwdev,
+ 	rcu_read_unlock();
+ }
+ 
++static inline bool rtw89_is_rtl885xb(struct rtw89_dev *rtwdev)
++{
++	enum rtw89_core_chip_id chip_id = rtwdev->chip->chip_id;
++
++	if (chip_id == RTL8852B || chip_id == RTL8851B || chip_id == RTL8852BT)
++		return true;
++
++	return false;
++}
++
+ int rtw89_core_tx_write(struct rtw89_dev *rtwdev, struct ieee80211_vif *vif,
+ 			struct ieee80211_sta *sta, struct sk_buff *skb, int *qsel);
+ int rtw89_h2c_tx(struct rtw89_dev *rtwdev,
+diff --git a/drivers/net/wireless/realtek/rtw89/mac.c b/drivers/net/wireless/realtek/rtw89/mac.c
+index 3d63f8b2770e..41f486915696 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac.c
++++ b/drivers/net/wireless/realtek/rtw89/mac.c
+@@ -3513,7 +3513,7 @@ int rtw89_mac_enable_cpu(struct rtw89_dev *rtwdev, u8 boot_reason, bool dlfw)
+ 
+ 	rtw89_write32(rtwdev, R_AX_WCPU_FW_CTRL, val);
+ 
+-	if (rtwdev->chip->chip_id == RTL8852B)
++	if (rtw89_is_rtl885xb(rtwdev))
+ 		rtw89_write32_mask(rtwdev, R_AX_SEC_CTRL,
+ 				   B_AX_SEC_IDMEM_SIZE_CONFIG_MASK, 0x2);
+ 

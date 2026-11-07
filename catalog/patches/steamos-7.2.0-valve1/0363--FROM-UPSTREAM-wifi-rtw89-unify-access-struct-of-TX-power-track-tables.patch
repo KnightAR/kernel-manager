@@ -1,0 +1,612 @@
+From 5e60a67a0db43f2042064ef20cf975586a9faab0 Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Tue, 7 Jul 2026 17:10:55 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: unify access struct of TX power
+ track tables
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+There are two struct to access TX power track tables. One is to access
+driver built-in tables, and the other one is to access the tables in fw
+element. As we are going to remove the built-in tables from driver, unify
+to use the struct as fw element style.
+
+The precedence is to use tables in fw element if present, and then
+built-in tables.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260707091056.42771-15-pkshih@realtek.com
+(cherry picked from commit 5c925d7722c674fe4d0819f2bb176d144a3eaae2)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/phy.h      |  19 ----
+ .../net/wireless/realtek/rtw89/rtw8851b_rfk.c |  20 ++--
+ .../wireless/realtek/rtw89/rtw8851b_table.c   |  15 +--
+ .../wireless/realtek/rtw89/rtw8851b_table.h   |   2 +-
+ .../net/wireless/realtek/rtw89/rtw8852a_rfk.c |  36 ++++---
+ .../wireless/realtek/rtw89/rtw8852a_table.c   |  27 ++---
+ .../wireless/realtek/rtw89/rtw8852a_table.h   |   2 +-
+ .../net/wireless/realtek/rtw89/rtw8852b_rfk.c |  36 ++++---
+ .../wireless/realtek/rtw89/rtw8852b_table.c   |  27 ++---
+ .../wireless/realtek/rtw89/rtw8852b_table.h   |   2 +-
+ .../net/wireless/realtek/rtw89/rtw8852c_rfk.c | 101 +++++++-----------
+ .../wireless/realtek/rtw89/rtw8852c_table.c   |  35 +++---
+ .../wireless/realtek/rtw89/rtw8852c_table.h   |   2 +-
+ 13 files changed, 146 insertions(+), 178 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/phy.h b/drivers/net/wireless/realtek/rtw89/phy.h
+index e31034377b54..b0c82bac72f0 100644
+--- a/drivers/net/wireless/realtek/rtw89/phy.h
++++ b/drivers/net/wireless/realtek/rtw89/phy.h
+@@ -353,25 +353,6 @@ struct rtw89_txpwr_byrate_cfg {
+ 	u32 data;
+ };
+ 
+-struct rtw89_txpwr_track_cfg {
+-	const s8 (*delta_swingidx_6gb_n)[DELTA_SWINGIDX_SIZE];
+-	const s8 (*delta_swingidx_6gb_p)[DELTA_SWINGIDX_SIZE];
+-	const s8 (*delta_swingidx_6ga_n)[DELTA_SWINGIDX_SIZE];
+-	const s8 (*delta_swingidx_6ga_p)[DELTA_SWINGIDX_SIZE];
+-	const s8 (*delta_swingidx_5gb_n)[DELTA_SWINGIDX_SIZE];
+-	const s8 (*delta_swingidx_5gb_p)[DELTA_SWINGIDX_SIZE];
+-	const s8 (*delta_swingidx_5ga_n)[DELTA_SWINGIDX_SIZE];
+-	const s8 (*delta_swingidx_5ga_p)[DELTA_SWINGIDX_SIZE];
+-	const s8 *delta_swingidx_2gb_n;
+-	const s8 *delta_swingidx_2gb_p;
+-	const s8 *delta_swingidx_2ga_n;
+-	const s8 *delta_swingidx_2ga_p;
+-	const s8 *delta_swingidx_2g_cck_b_n;
+-	const s8 *delta_swingidx_2g_cck_b_p;
+-	const s8 *delta_swingidx_2g_cck_a_n;
+-	const s8 *delta_swingidx_2g_cck_a_p;
+-};
+-
+ struct rtw89_phy_dig_gain_cfg {
+ 	const struct rtw89_reg_def *table;
+ 	u8 size;
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8851b_rfk.c b/drivers/net/wireless/realtek/rtw89/rtw8851b_rfk.c
+index a6c7f59223ef..c63f0e6364da 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8851b_rfk.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8851b_rfk.c
+@@ -2823,6 +2823,7 @@ static void _tssi_set_tmeter_tbl(struct rtw89_dev *rtwdev, enum rtw89_phy_idx ph
+ 	}						\
+ 	__val;						\
+ })
++	const struct rtw89_fw_txpwr_track_cfg *trk = rtwdev->fw.elm_info.txpwr_trk;
+ 	struct rtw89_tssi_info *tssi_info = &rtwdev->tssi;
+ 	u8 ch = chan->channel;
+ 	u8 subband = chan->subband_type;
+@@ -2833,23 +2834,26 @@ static void _tssi_set_tmeter_tbl(struct rtw89_dev *rtwdev, enum rtw89_phy_idx ph
+ 	u32 tmp = 0;
+ 	u8 i, j;
+ 
++	if (!trk)
++		trk = &rtw89_8851b_trk_cfg;
++
+ 	switch (subband) {
+ 	default:
+ 	case RTW89_CH_2G:
+-		thm_up_a = rtw89_8851b_trk_cfg.delta_swingidx_2ga_p;
+-		thm_down_a = rtw89_8851b_trk_cfg.delta_swingidx_2ga_n;
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_P][0];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_N][0];
+ 		break;
+ 	case RTW89_CH_5G_BAND_1:
+-		thm_up_a = rtw89_8851b_trk_cfg.delta_swingidx_5ga_p[0];
+-		thm_down_a = rtw89_8851b_trk_cfg.delta_swingidx_5ga_n[0];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][0];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][0];
+ 		break;
+ 	case RTW89_CH_5G_BAND_3:
+-		thm_up_a = rtw89_8851b_trk_cfg.delta_swingidx_5ga_p[1];
+-		thm_down_a = rtw89_8851b_trk_cfg.delta_swingidx_5ga_n[1];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][1];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][1];
+ 		break;
+ 	case RTW89_CH_5G_BAND_4:
+-		thm_up_a = rtw89_8851b_trk_cfg.delta_swingidx_5ga_p[2];
+-		thm_down_a = rtw89_8851b_trk_cfg.delta_swingidx_5ga_n[2];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][2];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][2];
+ 		break;
+ 	}
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8851b_table.c b/drivers/net/wireless/realtek/rtw89/rtw8851b_table.c
+index a9c309c245c3..b8105f6e94f1 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8851b_table.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8851b_table.c
+@@ -2,6 +2,7 @@
+ /* Copyright(c) 2022-2023  Realtek Corporation
+  */
+ 
++#include "fw.h"
+ #include "phy.h"
+ #include "reg.h"
+ #include "rtw8851b_table.h"
+@@ -14866,13 +14867,13 @@ const struct rtw89_txpwr_table rtw89_8851b_byr_table_type2 = {
+ 	.load = rtw89_phy_load_txpwr_byrate,
+ };
+ 
+-const struct rtw89_txpwr_track_cfg rtw89_8851b_trk_cfg = {
+-	.delta_swingidx_5ga_n = _txpwr_track_delta_swingidx_5ga_n,
+-	.delta_swingidx_5ga_p = _txpwr_track_delta_swingidx_5ga_p,
+-	.delta_swingidx_2ga_n = _txpwr_track_delta_swingidx_2ga_n,
+-	.delta_swingidx_2ga_p = _txpwr_track_delta_swingidx_2ga_p,
+-	.delta_swingidx_2g_cck_a_n = _txpwr_track_delta_swingidx_2g_cck_a_n,
+-	.delta_swingidx_2g_cck_a_p = _txpwr_track_delta_swingidx_2g_cck_a_p,
++const struct rtw89_fw_txpwr_track_cfg rtw89_8851b_trk_cfg = {
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N] = _txpwr_track_delta_swingidx_5ga_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P] = _txpwr_track_delta_swingidx_5ga_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_N] = &_txpwr_track_delta_swingidx_2ga_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_P] = &_txpwr_track_delta_swingidx_2ga_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_A_N] = &_txpwr_track_delta_swingidx_2g_cck_a_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_A_P] = &_txpwr_track_delta_swingidx_2g_cck_a_p,
+ };
+ 
+ const struct rtw89_rfe_parms rtw89_8851b_dflt_parms = {
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8851b_table.h b/drivers/net/wireless/realtek/rtw89/rtw8851b_table.h
+index d8cf545d40a0..a73c0a6f03df 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8851b_table.h
++++ b/drivers/net/wireless/realtek/rtw89/rtw8851b_table.h
+@@ -11,7 +11,7 @@ extern const struct rtw89_phy_table rtw89_8851b_phy_bb_table;
+ extern const struct rtw89_phy_table rtw89_8851b_phy_bb_gain_table;
+ extern const struct rtw89_phy_table rtw89_8851b_phy_radioa_table;
+ extern const struct rtw89_phy_table rtw89_8851b_phy_nctl_table;
+-extern const struct rtw89_txpwr_track_cfg rtw89_8851b_trk_cfg;
++extern const struct rtw89_fw_txpwr_track_cfg rtw89_8851b_trk_cfg;
+ extern const struct rtw89_rfe_parms rtw89_8851b_dflt_parms;
+ extern const struct rtw89_rfe_parms_conf rtw89_8851b_rfe_parms_conf[];
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852a_rfk.c b/drivers/net/wireless/realtek/rtw89/rtw8852a_rfk.c
+index 8679b21fd3fd..609cc300f24e 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852a_rfk.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852a_rfk.c
+@@ -2910,6 +2910,7 @@ static void _tssi_set_tmeter_tbl(struct rtw89_dev *rtwdev, enum rtw89_phy_idx ph
+ 	}						\
+ 	__val;						\
+ })
++	const struct rtw89_fw_txpwr_track_cfg *trk = rtwdev->fw.elm_info.txpwr_trk;
+ 	struct rtw89_tssi_info *tssi_info = &rtwdev->tssi;
+ 	u8 ch = chan->channel;
+ 	u8 subband = chan->subband_type;
+@@ -2922,31 +2923,34 @@ static void _tssi_set_tmeter_tbl(struct rtw89_dev *rtwdev, enum rtw89_phy_idx ph
+ 	u32 tmp = 0;
+ 	u8 i, j;
+ 
++	if (!trk)
++		trk = &rtw89_8852a_trk_cfg;
++
+ 	switch (subband) {
+ 	default:
+ 	case RTW89_CH_2G:
+-		thm_up_a = rtw89_8852a_trk_cfg.delta_swingidx_2ga_p;
+-		thm_down_a = rtw89_8852a_trk_cfg.delta_swingidx_2ga_n;
+-		thm_up_b = rtw89_8852a_trk_cfg.delta_swingidx_2gb_p;
+-		thm_down_b = rtw89_8852a_trk_cfg.delta_swingidx_2gb_n;
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_P][0];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_N][0];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_P][0];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_N][0];
+ 		break;
+ 	case RTW89_CH_5G_BAND_1:
+-		thm_up_a = rtw89_8852a_trk_cfg.delta_swingidx_5ga_p[0];
+-		thm_down_a = rtw89_8852a_trk_cfg.delta_swingidx_5ga_n[0];
+-		thm_up_b = rtw89_8852a_trk_cfg.delta_swingidx_5gb_p[0];
+-		thm_down_b = rtw89_8852a_trk_cfg.delta_swingidx_5gb_n[0];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][0];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][0];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][0];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][0];
+ 		break;
+ 	case RTW89_CH_5G_BAND_3:
+-		thm_up_a = rtw89_8852a_trk_cfg.delta_swingidx_5ga_p[1];
+-		thm_down_a = rtw89_8852a_trk_cfg.delta_swingidx_5ga_n[1];
+-		thm_up_b = rtw89_8852a_trk_cfg.delta_swingidx_5gb_p[1];
+-		thm_down_b = rtw89_8852a_trk_cfg.delta_swingidx_5gb_n[1];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][1];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][1];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][1];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][1];
+ 		break;
+ 	case RTW89_CH_5G_BAND_4:
+-		thm_up_a = rtw89_8852a_trk_cfg.delta_swingidx_5ga_p[2];
+-		thm_down_a = rtw89_8852a_trk_cfg.delta_swingidx_5ga_n[2];
+-		thm_up_b = rtw89_8852a_trk_cfg.delta_swingidx_5gb_p[2];
+-		thm_down_b = rtw89_8852a_trk_cfg.delta_swingidx_5gb_n[2];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][2];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][2];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][2];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][2];
+ 		break;
+ 	}
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852a_table.c b/drivers/net/wireless/realtek/rtw89/rtw8852a_table.c
+index ffdeb3801991..f1bcef64a91f 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852a_table.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852a_table.c
+@@ -2,6 +2,7 @@
+ /* Copyright(c) 2019-2020  Realtek Corporation
+  */
+ 
++#include "fw.h"
+ #include "phy.h"
+ #include "reg.h"
+ #include "rtw8852a_table.h"
+@@ -50983,19 +50984,19 @@ const struct rtw89_txpwr_table rtw89_8852a_byr_table = {
+ 	.load = rtw89_phy_load_txpwr_byrate,
+ };
+ 
+-const struct rtw89_txpwr_track_cfg rtw89_8852a_trk_cfg = {
+-	.delta_swingidx_5gb_n = _txpwr_track_delta_swingidx_5gb_n,
+-	.delta_swingidx_5gb_p = _txpwr_track_delta_swingidx_5gb_p,
+-	.delta_swingidx_5ga_n = _txpwr_track_delta_swingidx_5ga_n,
+-	.delta_swingidx_5ga_p = _txpwr_track_delta_swingidx_5ga_p,
+-	.delta_swingidx_2gb_n = _txpwr_track_delta_swingidx_2gb_n,
+-	.delta_swingidx_2gb_p = _txpwr_track_delta_swingidx_2gb_p,
+-	.delta_swingidx_2ga_n = _txpwr_track_delta_swingidx_2ga_n,
+-	.delta_swingidx_2ga_p = _txpwr_track_delta_swingidx_2ga_p,
+-	.delta_swingidx_2g_cck_b_n = _txpwr_track_delta_swingidx_2g_cck_b_n,
+-	.delta_swingidx_2g_cck_b_p = _txpwr_track_delta_swingidx_2g_cck_b_p,
+-	.delta_swingidx_2g_cck_a_n = _txpwr_track_delta_swingidx_2g_cck_a_n,
+-	.delta_swingidx_2g_cck_a_p = _txpwr_track_delta_swingidx_2g_cck_a_p,
++const struct rtw89_fw_txpwr_track_cfg rtw89_8852a_trk_cfg = {
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N] = _txpwr_track_delta_swingidx_5gb_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P] = _txpwr_track_delta_swingidx_5gb_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N] = _txpwr_track_delta_swingidx_5ga_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P] = _txpwr_track_delta_swingidx_5ga_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_N] = &_txpwr_track_delta_swingidx_2gb_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_P] = &_txpwr_track_delta_swingidx_2gb_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_N] = &_txpwr_track_delta_swingidx_2ga_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_P] = &_txpwr_track_delta_swingidx_2ga_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_B_N] = &_txpwr_track_delta_swingidx_2g_cck_b_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_B_P] = &_txpwr_track_delta_swingidx_2g_cck_b_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_A_N] = &_txpwr_track_delta_swingidx_2g_cck_a_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_A_P] = &_txpwr_track_delta_swingidx_2g_cck_a_p,
+ };
+ 
+ const struct rtw89_rfe_parms rtw89_8852a_dflt_parms = {
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852a_table.h b/drivers/net/wireless/realtek/rtw89/rtw8852a_table.h
+index 58fe8575c1c9..501a8248d1ce 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852a_table.h
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852a_table.h
+@@ -11,7 +11,7 @@ extern const struct rtw89_phy_table rtw89_8852a_phy_bb_table;
+ extern const struct rtw89_phy_table rtw89_8852a_phy_radioa_table;
+ extern const struct rtw89_phy_table rtw89_8852a_phy_radiob_table;
+ extern const struct rtw89_phy_table rtw89_8852a_phy_nctl_table;
+-extern const struct rtw89_txpwr_track_cfg rtw89_8852a_trk_cfg;
++extern const struct rtw89_fw_txpwr_track_cfg rtw89_8852a_trk_cfg;
+ extern const struct rtw89_rfe_parms rtw89_8852a_dflt_parms;
+ 
+ #endif
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852b_rfk.c b/drivers/net/wireless/realtek/rtw89/rtw8852b_rfk.c
+index 5cfacc10e7c8..29a82b1c4457 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852b_rfk.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852b_rfk.c
+@@ -2784,6 +2784,7 @@ static void _tssi_set_tmeter_tbl(struct rtw89_dev *rtwdev, enum rtw89_phy_idx ph
+ 	}						\
+ 	__val;						\
+ })
++	const struct rtw89_fw_txpwr_track_cfg *trk = rtwdev->fw.elm_info.txpwr_trk;
+ 	struct rtw89_tssi_info *tssi_info = &rtwdev->tssi;
+ 	u8 ch = chan->channel;
+ 	u8 subband = chan->subband_type;
+@@ -2796,31 +2797,34 @@ static void _tssi_set_tmeter_tbl(struct rtw89_dev *rtwdev, enum rtw89_phy_idx ph
+ 	u32 tmp = 0;
+ 	u8 i, j;
+ 
++	if (!trk)
++		trk = &rtw89_8852b_trk_cfg;
++
+ 	switch (subband) {
+ 	default:
+ 	case RTW89_CH_2G:
+-		thm_up_a = rtw89_8852b_trk_cfg.delta_swingidx_2ga_p;
+-		thm_down_a = rtw89_8852b_trk_cfg.delta_swingidx_2ga_n;
+-		thm_up_b = rtw89_8852b_trk_cfg.delta_swingidx_2gb_p;
+-		thm_down_b = rtw89_8852b_trk_cfg.delta_swingidx_2gb_n;
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_P][0];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_N][0];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_P][0];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_N][0];
+ 		break;
+ 	case RTW89_CH_5G_BAND_1:
+-		thm_up_a = rtw89_8852b_trk_cfg.delta_swingidx_5ga_p[0];
+-		thm_down_a = rtw89_8852b_trk_cfg.delta_swingidx_5ga_n[0];
+-		thm_up_b = rtw89_8852b_trk_cfg.delta_swingidx_5gb_p[0];
+-		thm_down_b = rtw89_8852b_trk_cfg.delta_swingidx_5gb_n[0];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][0];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][0];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][0];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][0];
+ 		break;
+ 	case RTW89_CH_5G_BAND_3:
+-		thm_up_a = rtw89_8852b_trk_cfg.delta_swingidx_5ga_p[1];
+-		thm_down_a = rtw89_8852b_trk_cfg.delta_swingidx_5ga_n[1];
+-		thm_up_b = rtw89_8852b_trk_cfg.delta_swingidx_5gb_p[1];
+-		thm_down_b = rtw89_8852b_trk_cfg.delta_swingidx_5gb_n[1];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][1];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][1];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][1];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][1];
+ 		break;
+ 	case RTW89_CH_5G_BAND_4:
+-		thm_up_a = rtw89_8852b_trk_cfg.delta_swingidx_5ga_p[2];
+-		thm_down_a = rtw89_8852b_trk_cfg.delta_swingidx_5ga_n[2];
+-		thm_up_b = rtw89_8852b_trk_cfg.delta_swingidx_5gb_p[2];
+-		thm_down_b = rtw89_8852b_trk_cfg.delta_swingidx_5gb_n[2];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][2];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][2];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][2];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][2];
+ 		break;
+ 	}
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852b_table.c b/drivers/net/wireless/realtek/rtw89/rtw8852b_table.c
+index 07945d06dc59..96b18e9095b3 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852b_table.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852b_table.c
+@@ -2,6 +2,7 @@
+ /* Copyright(c) 2019-2020  Realtek Corporation
+  */
+ 
++#include "fw.h"
+ #include "phy.h"
+ #include "reg.h"
+ #include "rtw8852b_table.h"
+@@ -22895,19 +22896,19 @@ const struct rtw89_txpwr_table rtw89_8852b_byr_table = {
+ 	.load = rtw89_phy_load_txpwr_byrate,
+ };
+ 
+-const struct rtw89_txpwr_track_cfg rtw89_8852b_trk_cfg = {
+-	.delta_swingidx_5gb_n = _txpwr_track_delta_swingidx_5gb_n,
+-	.delta_swingidx_5gb_p = _txpwr_track_delta_swingidx_5gb_p,
+-	.delta_swingidx_5ga_n = _txpwr_track_delta_swingidx_5ga_n,
+-	.delta_swingidx_5ga_p = _txpwr_track_delta_swingidx_5ga_p,
+-	.delta_swingidx_2gb_n = _txpwr_track_delta_swingidx_2gb_n,
+-	.delta_swingidx_2gb_p = _txpwr_track_delta_swingidx_2gb_p,
+-	.delta_swingidx_2ga_n = _txpwr_track_delta_swingidx_2ga_n,
+-	.delta_swingidx_2ga_p = _txpwr_track_delta_swingidx_2ga_p,
+-	.delta_swingidx_2g_cck_b_n = _txpwr_track_delta_swingidx_2g_cck_b_n,
+-	.delta_swingidx_2g_cck_b_p = _txpwr_track_delta_swingidx_2g_cck_b_p,
+-	.delta_swingidx_2g_cck_a_n = _txpwr_track_delta_swingidx_2g_cck_a_n,
+-	.delta_swingidx_2g_cck_a_p = _txpwr_track_delta_swingidx_2g_cck_a_p,
++const struct rtw89_fw_txpwr_track_cfg rtw89_8852b_trk_cfg = {
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N] = _txpwr_track_delta_swingidx_5gb_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P] = _txpwr_track_delta_swingidx_5gb_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N] = _txpwr_track_delta_swingidx_5ga_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P] = _txpwr_track_delta_swingidx_5ga_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_N] = &_txpwr_track_delta_swingidx_2gb_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_P] = &_txpwr_track_delta_swingidx_2gb_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_N] = &_txpwr_track_delta_swingidx_2ga_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_P] = &_txpwr_track_delta_swingidx_2ga_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_B_N] = &_txpwr_track_delta_swingidx_2g_cck_b_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_B_P] = &_txpwr_track_delta_swingidx_2g_cck_b_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_A_N] = &_txpwr_track_delta_swingidx_2g_cck_a_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_A_P] = &_txpwr_track_delta_swingidx_2g_cck_a_p,
+ };
+ 
+ const struct rtw89_rfe_parms rtw89_8852b_dflt_parms = {
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852b_table.h b/drivers/net/wireless/realtek/rtw89/rtw8852b_table.h
+index da6c90e2ba93..d30a1fb43e96 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852b_table.h
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852b_table.h
+@@ -12,7 +12,7 @@ extern const struct rtw89_phy_table rtw89_8852b_phy_bb_gain_table;
+ extern const struct rtw89_phy_table rtw89_8852b_phy_radioa_table;
+ extern const struct rtw89_phy_table rtw89_8852b_phy_radiob_table;
+ extern const struct rtw89_phy_table rtw89_8852b_phy_nctl_table;
+-extern const struct rtw89_txpwr_track_cfg rtw89_8852b_trk_cfg;
++extern const struct rtw89_fw_txpwr_track_cfg rtw89_8852b_trk_cfg;
+ extern const struct rtw89_rfe_parms rtw89_8852b_dflt_parms;
+ 
+ #endif
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852c_rfk.c b/drivers/net/wireless/realtek/rtw89/rtw8852c_rfk.c
+index cbee484dee30..8d03a4645947 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852c_rfk.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852c_rfk.c
+@@ -2992,7 +2992,7 @@ static void _tssi_set_tmeter_tbl(struct rtw89_dev *rtwdev, enum rtw89_phy_idx ph
+ 	}						\
+ 	__val;						\
+ })
+-	struct rtw89_fw_txpwr_track_cfg *trk = rtwdev->fw.elm_info.txpwr_trk;
++	const struct rtw89_fw_txpwr_track_cfg *trk = rtwdev->fw.elm_info.txpwr_trk;
+ 	struct rtw89_tssi_info *tssi_info = &rtwdev->tssi;
+ 	u8 ch = chan->channel;
+ 	u8 subband = chan->subband_type;
+@@ -3005,91 +3005,62 @@ static void _tssi_set_tmeter_tbl(struct rtw89_dev *rtwdev, enum rtw89_phy_idx ph
+ 	u32 tmp = 0;
+ 	u8 i, j;
+ 
++	if (!trk)
++		trk = &rtw89_8852c_trk_cfg;
++
+ 	switch (subband) {
+ 	default:
+ 	case RTW89_CH_2G:
+-		thm_up_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_P][0] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_2ga_p;
+-		thm_down_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_N][0] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_2ga_n;
+-		thm_up_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_P][0] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_2gb_p;
+-		thm_down_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_N][0] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_2gb_n;
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_P][0];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_N][0];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_P][0];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_N][0];
+ 		break;
+ 	case RTW89_CH_5G_BAND_1:
+-		thm_up_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][0] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_5ga_p[0];
+-		thm_down_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][0] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_5ga_n[0];
+-		thm_up_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][0] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_5gb_p[0];
+-		thm_down_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][0] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_5gb_n[0];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][0];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][0];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][0];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][0];
+ 		break;
+ 	case RTW89_CH_5G_BAND_3:
+-		thm_up_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][1] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_5ga_p[1];
+-		thm_down_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][1] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_5ga_n[1];
+-		thm_up_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][1] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_5gb_p[1];
+-		thm_down_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][1] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_5gb_n[1];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][1];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][1];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][1];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][1];
+ 		break;
+ 	case RTW89_CH_5G_BAND_4:
+-		thm_up_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][2] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_5ga_p[2];
+-		thm_down_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][2] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_5ga_n[2];
+-		thm_up_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][2] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_5gb_p[2];
+-		thm_down_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][2] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_5gb_n[2];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P][2];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N][2];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P][2];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N][2];
+ 		break;
+ 	case RTW89_CH_6G_BAND_IDX0:
+ 	case RTW89_CH_6G_BAND_IDX1:
+-		thm_up_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_P][0] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_6ga_p[0];
+-		thm_down_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_N][0] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_6ga_n[0];
+-		thm_up_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_P][0] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_6gb_p[0];
+-		thm_down_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_N][0] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_6gb_n[0];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_P][0];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_N][0];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_P][0];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_N][0];
+ 		break;
+ 	case RTW89_CH_6G_BAND_IDX2:
+ 	case RTW89_CH_6G_BAND_IDX3:
+-		thm_up_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_P][1] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_6ga_p[1];
+-		thm_down_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_N][1] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_6ga_n[1];
+-		thm_up_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_P][1] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_6gb_p[1];
+-		thm_down_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_N][1] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_6gb_n[1];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_P][1];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_N][1];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_P][1];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_N][1];
+ 		break;
+ 	case RTW89_CH_6G_BAND_IDX4:
+ 	case RTW89_CH_6G_BAND_IDX5:
+-		thm_up_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_P][2] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_6ga_p[2];
+-		thm_down_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_N][2] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_6ga_n[2];
+-		thm_up_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_P][2] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_6gb_p[2];
+-		thm_down_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_N][2] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_6gb_n[2];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_P][2];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_N][2];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_P][2];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_N][2];
+ 		break;
+ 	case RTW89_CH_6G_BAND_IDX6:
+ 	case RTW89_CH_6G_BAND_IDX7:
+-		thm_up_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_P][3] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_6ga_p[3];
+-		thm_down_a = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_N][3] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_6ga_n[3];
+-		thm_up_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_P][3] :
+-				 rtw89_8852c_trk_cfg.delta_swingidx_6gb_p[3];
+-		thm_down_b = trk ? trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_N][3] :
+-				   rtw89_8852c_trk_cfg.delta_swingidx_6gb_n[3];
++		thm_up_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_P][3];
++		thm_down_a = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_N][3];
++		thm_up_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_P][3];
++		thm_down_b = trk->delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_N][3];
+ 		break;
+ 	}
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852c_table.c b/drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
+index 24c390b6f3d3..b4cf497e8524 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
+@@ -2,6 +2,7 @@
+ /* Copyright(c) 2019-2022  Realtek Corporation
+  */
+ 
++#include "fw.h"
+ #include "phy.h"
+ #include "reg.h"
+ #include "rtw8852c_table.h"
+@@ -57109,23 +57110,23 @@ const struct rtw89_txpwr_table rtw89_8852c_byr_table = {
+ 	.load = rtw89_phy_load_txpwr_byrate,
+ };
+ 
+-const struct rtw89_txpwr_track_cfg rtw89_8852c_trk_cfg = {
+-	.delta_swingidx_6gb_n = _txpwr_track_delta_swingidx_6gb_n,
+-	.delta_swingidx_6gb_p = _txpwr_track_delta_swingidx_6gb_p,
+-	.delta_swingidx_6ga_n = _txpwr_track_delta_swingidx_6ga_n,
+-	.delta_swingidx_6ga_p = _txpwr_track_delta_swingidx_6ga_p,
+-	.delta_swingidx_5gb_n = _txpwr_track_delta_swingidx_5gb_n,
+-	.delta_swingidx_5gb_p = _txpwr_track_delta_swingidx_5gb_p,
+-	.delta_swingidx_5ga_n = _txpwr_track_delta_swingidx_5ga_n,
+-	.delta_swingidx_5ga_p = _txpwr_track_delta_swingidx_5ga_p,
+-	.delta_swingidx_2gb_n = _txpwr_track_delta_swingidx_2gb_n,
+-	.delta_swingidx_2gb_p = _txpwr_track_delta_swingidx_2gb_p,
+-	.delta_swingidx_2ga_n = _txpwr_track_delta_swingidx_2ga_n,
+-	.delta_swingidx_2ga_p = _txpwr_track_delta_swingidx_2ga_p,
+-	.delta_swingidx_2g_cck_b_n = _txpwr_track_delta_swingidx_2g_cck_b_n,
+-	.delta_swingidx_2g_cck_b_p = _txpwr_track_delta_swingidx_2g_cck_b_p,
+-	.delta_swingidx_2g_cck_a_n = _txpwr_track_delta_swingidx_2g_cck_a_n,
+-	.delta_swingidx_2g_cck_a_p = _txpwr_track_delta_swingidx_2g_cck_a_p,
++const struct rtw89_fw_txpwr_track_cfg rtw89_8852c_trk_cfg = {
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_N] = _txpwr_track_delta_swingidx_6gb_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_6GB_P] = _txpwr_track_delta_swingidx_6gb_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_N] = _txpwr_track_delta_swingidx_6ga_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_6GA_P] = _txpwr_track_delta_swingidx_6ga_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_N] = _txpwr_track_delta_swingidx_5gb_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GB_P] = _txpwr_track_delta_swingidx_5gb_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_N] = _txpwr_track_delta_swingidx_5ga_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_5GA_P] = _txpwr_track_delta_swingidx_5ga_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_N] = &_txpwr_track_delta_swingidx_2gb_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GB_P] = &_txpwr_track_delta_swingidx_2gb_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_N] = &_txpwr_track_delta_swingidx_2ga_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2GA_P] = &_txpwr_track_delta_swingidx_2ga_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_B_N] = &_txpwr_track_delta_swingidx_2g_cck_b_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_B_P] = &_txpwr_track_delta_swingidx_2g_cck_b_p,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_A_N] = &_txpwr_track_delta_swingidx_2g_cck_a_n,
++	.delta[RTW89_FW_TXPWR_TRK_TYPE_2G_CCK_A_P] = &_txpwr_track_delta_swingidx_2g_cck_a_p,
+ };
+ 
+ const struct rtw89_phy_tssi_dbw_table rtw89_8852c_tssi_dbw_table = {
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852c_table.h b/drivers/net/wireless/realtek/rtw89/rtw8852c_table.h
+index 7c9f3ecdc4e7..69c95f35b535 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852c_table.h
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852c_table.h
+@@ -13,7 +13,7 @@ extern const struct rtw89_phy_table rtw89_8852c_phy_radioa_table;
+ extern const struct rtw89_phy_table rtw89_8852c_phy_radiob_table;
+ extern const struct rtw89_phy_table rtw89_8852c_phy_nctl_table;
+ extern const struct rtw89_phy_tssi_dbw_table rtw89_8852c_tssi_dbw_table;
+-extern const struct rtw89_txpwr_track_cfg rtw89_8852c_trk_cfg;
++extern const struct rtw89_fw_txpwr_track_cfg rtw89_8852c_trk_cfg;
+ extern const struct rtw89_rfe_parms rtw89_8852c_dflt_parms;
+ 
+ #endif
+-- 
+2.55.0
+

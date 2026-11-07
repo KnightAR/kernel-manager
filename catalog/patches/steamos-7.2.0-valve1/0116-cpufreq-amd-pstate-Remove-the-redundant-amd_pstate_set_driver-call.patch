@@ -1,0 +1,54 @@
+From 921cb54453a09ba0566b131f6aaf52f898fba255 Mon Sep 17 00:00:00 2001
+From: Dhananjay Ugwekar <Dhananjay.Ugwekar@amd.com>
+Date: Thu, 17 Oct 2024 10:05:33 +0000
+Subject: [PATCH] cpufreq/amd-pstate: Remove the redundant
+ amd_pstate_set_driver() call
+
+amd_pstate_set_driver() is called twice, once in amd_pstate_init() and once
+as part of amd_pstate_register_driver(). Move around code and eliminate
+the redundancy.
+
+Signed-off-by: Dhananjay Ugwekar <Dhananjay.Ugwekar@amd.com>
+Reviewed-by: Mario Limonciello <mario.limonciello@amd.com>
+Link: https://lore.kernel.org/r/20241017100528.300143-5-Dhananjay.Ugwekar@amd.com
+Signed-off-by: Mario Limonciello <mario.limonciello@amd.com>
+(cherry picked from commit b427ac4084753d7c62ef797bed7f30203f0ef5fb)
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/cpufreq/amd-pstate.c | 12 ++++--------
+ 1 file changed, 4 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/cpufreq/amd-pstate.c b/drivers/cpufreq/amd-pstate.c
+index b02df6f54e2a..63801e039310 100644
+--- a/drivers/cpufreq/amd-pstate.c
++++ b/drivers/cpufreq/amd-pstate.c
+@@ -2278,9 +2278,11 @@ static int __init amd_pstate_init(void)
+ 		return -ENODEV;
+ 	}
+ 
+-	ret = amd_pstate_set_driver(cppc_state);
+-	if (ret)
++	ret = amd_pstate_register_driver(cppc_state);
++	if (ret) {
++		pr_err("failed to register with return %d\n", ret);
+ 		return ret;
++	}
+ 
+ 	/* capability check */
+ 	if (cpu_feature_enabled(X86_FEATURE_CPPC)) {
+@@ -2300,12 +2302,6 @@ static int __init amd_pstate_init(void)
+ 			return ret;
+ 	}
+ 
+-	ret = amd_pstate_register_driver(cppc_state);
+-	if (ret) {
+-		pr_err("failed to register with return %d\n", ret);
+-		return ret;
+-	}
+-
+ 	dev_root = bus_get_dev_root(&cpu_subsys);
+ 	if (dev_root) {
+ 		ret = sysfs_create_group(&dev_root->kobj, &amd_pstate_global_attr_group);
+-- 
+2.55.0
+

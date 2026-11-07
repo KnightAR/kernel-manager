@@ -1,0 +1,28 @@
+From 5fbf0821fa1de615813c017aa900dcd146a061f6 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Sat, 2 Mar 2024 04:37:35 +0200
+Subject: [PATCH] gitlab-ci: Restrict running test-kernel-qemu on tags only
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index d2114ee26e41..d0626b13290b 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -131,6 +131,9 @@ test-kernel-qemu:
+     - .use-debian-kernel-builder
+   needs:
+     - build-kernel-qemu
++  rules:
++    - if: $CI_COMMIT_TAG
++    - when: manual
+   script:
+     # Download rootfs
+     - 'curl -L --header "PRIVATE-TOKEN: ${KERNEL_RESEARCH_ROOTFS_TOKEN}" "${ROOTFS_IMAGE_URL}" --output artifact.zip'
+-- 
+2.55.0
+

@@ -1,0 +1,27 @@
+From 64a0597dd13f5e99d402aa5fbe9826849a5ee876 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Thu, 22 Feb 2024 22:21:57 +0200
+Subject: [PATCH] gitlab-ci: Enable support for ANX7580
+
+This is the Analogix ANX7580 to MIPI DSI bridge found on Steam Deck OLED
+model.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .config-fragment | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/.config-fragment b/.config-fragment
+index db4b6c23c39c..8e7d6ad8aa78 100644
+--- a/.config-fragment
++++ b/.config-fragment
+@@ -29,3 +29,5 @@ CONFIG_LTRF216A=y
+ CONFIG_ATH11K=y
+ CONFIG_ATH11K_PCI=y
+ CONFIG_CRYPTO_MICHAEL_MIC=y
++
++CONFIG_DRM_ANALOGIX_ANX7580=y
+-- 
+2.55.0
+

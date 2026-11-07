@@ -1,0 +1,70 @@
+From 4b48de3b9f778b4bd9e5c52c5ef94b789208e387 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <nat@pixelcluster.dev>
+Date: Mon, 6 Jul 2026 11:31:41 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/ttm: move zombie handling into
+ ttm_bo_evict
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Both callers do the same thing, so we can trivially unify that.
+
+Signed-off-by: Christian König <christian.koenig@amd.com>
+Signed-off-by: Natalie Vock <nat@pixelcluster.dev>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/ttm/ttm_bo.c | 24 +++++++++---------------
+ 1 file changed, 9 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/gpu/drm/ttm/ttm_bo.c b/drivers/gpu/drm/ttm/ttm_bo.c
+index 478b5843db0a..adf45ca682f3 100644
+--- a/drivers/gpu/drm/ttm/ttm_bo.c
++++ b/drivers/gpu/drm/ttm/ttm_bo.c
+@@ -359,6 +359,13 @@ static int ttm_bo_evict(struct ttm_buffer_object *bo,
+ 	struct ttm_place hop;
+ 	int ret = 0;
+ 
++	if (ttm_bo_is_zombie(bo)) {
++		ret = ttm_bo_wait_ctx(bo, ctx);
++		if (!ret)
++			ttm_bo_cleanup_memtype_use(bo);
++		return ret;
++	}
++
+ 	memset(&hop, 0, sizeof(hop));
+ 
+ 	dma_resv_assert_held(bo->base.resv);
+@@ -466,13 +473,7 @@ int ttm_bo_evict_first(struct ttm_device *bdev, struct ttm_resource_manager *man
+ 	if (!bo->resource || bo->resource->mem_type != mem_type)
+ 		goto out_bo_moved;
+ 
+-	if (ttm_bo_is_zombie(bo)) {
+-		ret = ttm_bo_wait_ctx(bo, ctx);
+-		if (!ret)
+-			ttm_bo_cleanup_memtype_use(bo);
+-	} else {
+-		ret = ttm_bo_evict(bo, ctx);
+-	}
++	ret = ttm_bo_evict(bo, ctx);
+ out_bo_moved:
+ 	dma_resv_unlock(bo->base.resv);
+ out_no_lock:
+@@ -670,14 +671,7 @@ static s64 ttm_bo_evict_cb(struct ttm_lru_walk *walk, struct ttm_buffer_object *
+ 	if (bo->pin_count || !bo->bdev->funcs->eviction_valuable(bo, evict_walk->place))
+ 		return 0;
+ 
+-	if (ttm_bo_is_zombie(bo)) {
+-		lret = ttm_bo_wait_ctx(bo, walk->arg.ctx);
+-		if (!lret)
+-			ttm_bo_cleanup_memtype_use(bo);
+-	} else {
+-		lret = ttm_bo_evict(bo, walk->arg.ctx);
+-	}
+-
++	lret = ttm_bo_evict(bo, walk->arg.ctx);
+ 	if (lret)
+ 		goto out;
+ 
+-- 
+2.55.0
+

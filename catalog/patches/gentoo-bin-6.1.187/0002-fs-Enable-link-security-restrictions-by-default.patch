@@ -1,0 +1,36 @@
+From 8b1324bf8357901c7bd982aa3951e95a549c1c8c Mon Sep 17 00:00:00 2001
+From: Ben Hutchings <ben@decadent.org.uk>
+Date: Fri, 2 Nov 2012 05:32:06 +0000
+Subject: [PATCH 02/16] fs: Enable link security restrictions by default
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This reverts commit 561ec64ae67ef25cac8d72bb9c4bfc955edfd415
+('VFS: don't do protected {sym,hard}links by default').
+
+From: https://sources.debian.org/src/linux/3.16.7-ckt4-3/debian/patches/debian/fs-enable-link-security-restrictions-by-default.patch/
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ fs/namei.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/fs/namei.c b/fs/namei.c
+index c8fe0bbf2611..86efdf365dee 100644
+--- a/fs/namei.c
++++ b/fs/namei.c
+@@ -1025,10 +1025,10 @@ static inline void put_link(struct nameidata *nd)
+ 		path_put(&last->link);
+ }
+ 
+-static int sysctl_protected_symlinks __read_mostly;
+-static int sysctl_protected_hardlinks __read_mostly;
+-static int sysctl_protected_fifos __read_mostly;
+-static int sysctl_protected_regular __read_mostly;
++static int sysctl_protected_symlinks __read_mostly = 1;
++static int sysctl_protected_hardlinks __read_mostly = 1;
++int sysctl_protected_fifos __read_mostly = 1;
++int sysctl_protected_regular __read_mostly = 1;
+ 
+ #ifdef CONFIG_SYSCTL
+ static struct ctl_table namei_sysctls[] = {

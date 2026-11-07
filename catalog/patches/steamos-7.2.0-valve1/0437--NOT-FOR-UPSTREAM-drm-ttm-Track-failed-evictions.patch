@@ -1,0 +1,44 @@
+From b76a8abfe9d779b7d47ff4d79f92490f10c9136a Mon Sep 17 00:00:00 2001
+From: Natalie Vock <natalie.vock@gmx.de>
+Date: Wed, 1 Jul 2026 12:06:08 +0200
+Subject: [PATCH] [NOT-FOR-UPSTREAM] drm/ttm: Track failed evictions
+
+If an eviction made no progress, drivers might want to be less agressive
+in retrying evictions as they're unlikely to succeed the next time
+around, too.
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/ttm/ttm_bo.c | 2 ++
+ include/drm/ttm/ttm_bo.h     | 1 +
+ 2 files changed, 3 insertions(+)
+
+diff --git a/drivers/gpu/drm/ttm/ttm_bo.c b/drivers/gpu/drm/ttm/ttm_bo.c
+index 999acb47f614..ffd44bad88f3 100644
+--- a/drivers/gpu/drm/ttm/ttm_bo.c
++++ b/drivers/gpu/drm/ttm/ttm_bo.c
+@@ -780,6 +780,8 @@ retry:
+ 		goto retry;
+ 	}
+ 
++	if (!lret)
++		++ctx->unsuccessful_evicts;
+ out:
+ 	state->in_evict = false;
+ 	if (lret < 0)
+diff --git a/include/drm/ttm/ttm_bo.h b/include/drm/ttm/ttm_bo.h
+index c28582e9ba40..03337d8c3813 100644
+--- a/include/drm/ttm/ttm_bo.h
++++ b/include/drm/ttm/ttm_bo.h
+@@ -195,6 +195,7 @@ struct ttm_operation_ctx {
+ 	 * @bytes_moved: Statistics on how many bytes have been moved.
+ 	 */
+ 	uint64_t bytes_moved;
++	uint32_t unsuccessful_evicts;
+ 	/**
+ 	 * @exec: optional drm_exec object to use for locking BOs and
+ 	 * tracking which are locked.
+-- 
+2.55.0
+

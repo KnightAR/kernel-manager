@@ -1,0 +1,46 @@
+From 4bd78c3c2e3d864e84f00264c555ee079a86ae34 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <natalie.vock@gmx.de>
+Date: Sat, 20 Jun 2026 11:02:31 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/ttm: Add cgroup_throttle flag
+
+Throttles claiming of cgroup-protected memory by avoiding
+eviction
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/ttm/ttm_bo.c | 4 +++-
+ include/drm/ttm/ttm_bo.h     | 2 ++
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/ttm/ttm_bo.c b/drivers/gpu/drm/ttm/ttm_bo.c
+index dd785854b610..9224d2b4b1f5 100644
+--- a/drivers/gpu/drm/ttm/ttm_bo.c
++++ b/drivers/gpu/drm/ttm/ttm_bo.c
+@@ -529,7 +529,9 @@ static int ttm_bo_alloc_at_place(struct ttm_buffer_object *bo,
+ 		may_evict |= dmem_cgroup_below_min(NULL, alloc_state->charge_pool);
+ 		alloc_state->may_try_low = may_evict;
+ 
+-		may_evict |= dmem_cgroup_below_low(NULL, alloc_state->charge_pool);
++		may_evict |=
++			dmem_cgroup_below_low(NULL, alloc_state->charge_pool) &&
++			!ctx->cgroup_throttle;
+ 	}
+ 
+ 	ret = ttm_resource_alloc(bo, place, res, alloc_state->charge_pool);
+diff --git a/include/drm/ttm/ttm_bo.h b/include/drm/ttm/ttm_bo.h
+index 156444b5e85d..d05d4daa85a0 100644
+--- a/include/drm/ttm/ttm_bo.h
++++ b/include/drm/ttm/ttm_bo.h
+@@ -178,6 +178,8 @@ struct ttm_operation_ctx {
+ 	 * when multiple BOs share the same reservation object @resv.
+ 	 */
+ 	bool allow_res_evict;
++	/** @cgroup_throttle: Avoid claiming protected memory aggressively. */
++	bool cgroup_throttle;
+ 	/**
+ 	 * @resv: Reservation object to be used together with
+ 	 * @allow_res_evict.
+-- 
+2.55.0
+

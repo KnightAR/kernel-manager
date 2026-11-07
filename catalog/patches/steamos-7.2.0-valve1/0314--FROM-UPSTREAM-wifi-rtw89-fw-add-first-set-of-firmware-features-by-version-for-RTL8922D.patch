@@ -1,0 +1,49 @@
+From 387880d185433ec33ce25fc3c464eddeb3ba1e6d Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Mon, 25 May 2026 15:07:34 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: fw: add first set of firmware
+ features by version for RTL8922D
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The firmware features including version of command/event format are
+maintained by this table, which enables features by firmware version.
+Define the first feature set accordingly.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260525070735.27659-2-pkshih@realtek.com
+(cherry picked from commit 7123cb442e13fb426bee8132d0420b59071a5153)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/fw.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.c b/drivers/net/wireless/realtek/rtw89/fw.c
+index 1e5b261f3a69..98a1935aba06 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.c
++++ b/drivers/net/wireless/realtek/rtw89/fw.c
+@@ -933,6 +933,19 @@ static const struct __fw_feat_cfg fw_feat_tbl[] = {
+ 	__CFG_FW_FEAT(RTL8922A, ge, 0, 35, 92, 0, TX_HISTORY_V1),
+ 	__CFG_FW_FEAT(RTL8922A, ge, 0, 35, 100, 0, SER_POST_RECOVER_DMAC),
+ 	__CFG_FW_FEAT(RTL8922A, ge, 0, 35, 108, 0, SIM_SER_L0L1_BY_HALT_H2C),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 0, 0, 0, MACID_PAUSE_SLEEP),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 75, 2, SCAN_OFFLOAD),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 75, 2, BEACON_FILTER),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 76, 0, LPS_DACK_BY_C2H_REG),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 84, 0, CRASH_TRIGGER_TYPE_1),
++	__CFG_FW_FEAT(RTL8922D, lt, 0, 35, 84, 0, ADDR_CAM_V0),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 87, 0, BEACON_LOSS_COUNT_V1),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 91, 0, RFK_PRE_NOTIFY_MCC_V2),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 91, 4, LPS_ML_INFO_V1),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 93, 0, NOTIFY_AP_INFO),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 100, 0, SER_POST_RECOVER_DMAC),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 104, 0, TX_HISTORY_V1),
++	__CFG_FW_FEAT(RTL8922D, ge, 0, 35, 108, 0, SIM_SER_L0L1_BY_HALT_H2C),
+ };
+ 
+ static void rtw89_fw_iterate_feature_cfg(struct rtw89_fw_info *fw,
+-- 
+2.55.0
+

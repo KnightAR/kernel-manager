@@ -1,0 +1,93 @@
+From 65e66c55263b76e5be6262d27930a88a5ad98b78 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?N=C3=ADcolas=20F=2E=20R=2E=20A=2E=20Prado?=
+ <nfraprado@collabora.com>
+Date: Wed, 12 Aug 2026 16:36:28 -0400
+Subject: [PATCH] [FROM-ML] wifi: rtw89: Don't return default channel from
+ disabled bands
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+rtw89_get_default_chandef() assumes the lowest frequency channel in the
+2GHz band is available on all hardware, and always returns that as the
+default channel. This is no longer the case after commit 355626a2c232
+("wifi: rtw89: 8852cu: add quirk to disable 2.4 GHz band"), and the
+current logic results in kernel WARNs and null pointer dereferences on
+boards with that quirk set.
+
+Update rtw89_get_default_chandef() to consider the available bands when
+picking the default channel.
+
+Fixes: 355626a2c232 ("wifi: rtw89: 8852cu: add quirk to disable 2.4 GHz band")
+Link: https://patch.msgid.link/20260812-rtw89-2ghz-quirk-fix-v1-1-7fd2a46e7a02@collabora.com
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/chan.c |  2 +-
+ drivers/net/wireless/realtek/rtw89/core.c | 21 ++++++++++++++++++---
+ drivers/net/wireless/realtek/rtw89/core.h |  3 ++-
+ 3 files changed, 21 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/chan.c b/drivers/net/wireless/realtek/rtw89/chan.c
+index 6f11335b4968..6512fc9eef29 100644
+--- a/drivers/net/wireless/realtek/rtw89/chan.c
++++ b/drivers/net/wireless/realtek/rtw89/chan.c
+@@ -297,7 +297,7 @@ static void rtw89_config_default_chandef(struct rtw89_dev *rtwdev)
+ {
+ 	struct cfg80211_chan_def chandef = {0};
+ 
+-	rtw89_get_default_chandef(&chandef);
++	rtw89_get_default_chandef(rtwdev, &chandef);
+ 	__rtw89_config_entity_chandef(rtwdev, RTW89_CHANCTX_0, &chandef);
+ }
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/core.c b/drivers/net/wireless/realtek/rtw89/core.c
+index 77a0e2582dbe..ca680d9cb02b 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.c
++++ b/drivers/net/wireless/realtek/rtw89/core.c
+@@ -393,10 +393,25 @@ static void rtw89_traffic_stats_accu(struct rtw89_dev *rtwdev,
+ 	}
+ }
+ 
+-void rtw89_get_default_chandef(struct cfg80211_chan_def *chandef)
++void rtw89_get_default_chandef(struct rtw89_dev *rtwdev,
++			       struct cfg80211_chan_def *chandef)
+ {
+-	cfg80211_chandef_create(chandef, &rtw89_channels_2ghz[0],
+-				NL80211_CHAN_NO_HT);
++	u8 support_bands = rtwdev->chip->support_bands;
++	struct ieee80211_channel *default_channel;
++
++	if (support_bands & BIT(NL80211_BAND_2GHZ) &&
++	    !test_bit(RTW89_QUIRK_DISABLE_2GHZ, rtwdev->quirks)) {
++		default_channel = &rtw89_channels_2ghz[0];
++	} else if (support_bands & BIT(NL80211_BAND_5GHZ)) {
++		default_channel = &rtw89_channels_5ghz[0];
++	} else if (support_bands & BIT(NL80211_BAND_6GHZ)) {
++		default_channel = &rtw89_channels_6ghz[0];
++	} else {
++		rtw89_err(rtwdev, "Failed to get default channel, no band supported\n");
++		return;
++	}
++
++	cfg80211_chandef_create(chandef, default_channel, NL80211_CHAN_NO_HT);
+ }
+ 
+ void rtw89_get_channel_params(const struct cfg80211_chan_def *chandef,
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index eb7b00ecc3f7..e286b1aedffd 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -9030,7 +9030,8 @@ void rtw89_chip_rfk_channel(struct rtw89_dev *rtwdev,
+ 			    struct rtw89_vif_link *rtwvif_link);
+ const struct rtw89_6ghz_span *
+ rtw89_get_6ghz_span(struct rtw89_dev *rtwdev, u32 center_freq);
+-void rtw89_get_default_chandef(struct cfg80211_chan_def *chandef);
++void rtw89_get_default_chandef(struct rtw89_dev *rtwdev,
++			       struct cfg80211_chan_def *chandef);
+ void rtw89_get_channel_params(const struct cfg80211_chan_def *chandef,
+ 			      struct rtw89_chan *chan);
+ int rtw89_set_channel(struct rtw89_dev *rtwdev);
+-- 
+2.55.0
+

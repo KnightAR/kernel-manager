@@ -1,0 +1,51 @@
+From 4bbf296bfb30590303fd96cc1e5792f3a4e579c1 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Mon, 4 Mar 2024 02:00:56 +0200
+Subject: [PATCH] gitlab-ci: Move QEMU kernel configs to dedicated folder
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml                                        | 11 ++++++-----
+ .../qemu/config-fragment}                             |  0
+ .../qemu/config-fragment-extra}                       |  0
+ 3 files changed, 6 insertions(+), 5 deletions(-)
+ rename ci/{.config-fragment => kernel-config/qemu/config-fragment} (100%)
+ rename ci/{.config-fragment-extra => kernel-config/qemu/config-fragment-extra} (100%)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 254fd875bb93..a253981c4a2c 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -94,14 +94,15 @@ build-kernel-qemu:
+     - |
+       printf "%s\n" \
+         "CONFIG_EXTRA_FIRMWARE_DIR=\"ci/fw\"" \
+-        "CONFIG_EXTRA_FIRMWARE=\"${FW_FILES}\"" &> ci/.config-fragment-firmware
++        "CONFIG_EXTRA_FIRMWARE=\"${FW_FILES}\"" \
++         >ci/kernel-config/qemu/config-fragment-firmware
+     # Prepare kernel config
+     - make x86_64_defconfig && make kvm_guest.config
+     - |
+-      ./scripts/kconfig/merge_config.sh .config \
+-        ci/.config-fragment \
+-        ci/.config-fragment-extra \
+-        ci/.config-fragment-firmware
++      ./scripts/kconfig/merge_config.sh -m .config \
++        ci/kernel-config/qemu/config-fragment \
++        ci/kernel-config/qemu/config-fragment-extra \
++        ci/kernel-config/qemu/config-fragment-firmware
+     - cp .config kernel_config
+     # Build kernel
+     - make -j $(nproc)
+diff --git a/ci/.config-fragment b/ci/kernel-config/qemu/config-fragment
+similarity index 100%
+rename from ci/.config-fragment
+rename to ci/kernel-config/qemu/config-fragment
+diff --git a/ci/.config-fragment-extra b/ci/kernel-config/qemu/config-fragment-extra
+similarity index 100%
+rename from ci/.config-fragment-extra
+rename to ci/kernel-config/qemu/config-fragment-extra
+-- 
+2.55.0
+

@@ -1,0 +1,29 @@
+From 8adcc2829ee5f6067da733b1586a9563518fc102 Mon Sep 17 00:00:00 2001
+From: Joshua Ashton <joshua@froggi.es>
+Date: Thu, 18 Jan 2024 21:45:39 +0000
+Subject: [PATCH] drm/amdgpu: Bump soft recovery timeout to 1s
+
+Seems more reliable.
+
+Signed-off-by: Joshua Ashton <joshua@froggi.es>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_ring.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_ring.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_ring.c
+index 30b93a33ae88..62dec6fa8510 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_ring.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_ring.c
+@@ -462,7 +462,7 @@ bool amdgpu_ring_soft_recovery(struct amdgpu_ring *ring, unsigned int vmid,
+ 		dma_fence_set_error(fence, -ENODATA);
+ 	dma_fence_unlock_irqrestore(fence, flags);
+ 
+-	deadline = ktime_add_us(ktime_get(), 10000);
++	deadline = ktime_add_ms(ktime_get(), 1000);
+ 	while (!dma_fence_is_signaled(fence) &&
+ 	       ktime_to_ns(ktime_sub(deadline, ktime_get())) > 0)
+ 		ring->funcs->soft_recovery(ring, vmid);
+-- 
+2.55.0
+

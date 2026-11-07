@@ -1,0 +1,28 @@
+From c971ae0c31f46e05633ef22b4ea14b0d47c92378 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Thu, 18 Jan 2024 22:50:51 +0200
+Subject: [PATCH] gitlab-ci: Enable hid-steam driver
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .config-fragment | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/.config-fragment b/.config-fragment
+index 74548b73a973..2d992737959e 100644
+--- a/.config-fragment
++++ b/.config-fragment
+@@ -7,6 +7,9 @@ CONFIG_EXTCON_STEAMDECK=y
+ CONFIG_LEDS_STEAMDECK=y
+ CONFIG_SENSORS_STEAMDECK=y
+ 
++CONFIG_HID_STEAM=m
++CONFIG_STEAM_FF=y
++
+ CONFIG_SND_SOC=y
+ CONFIG_SND_SOC_AMD_ACP5x=y
+ CONFIG_SND_SOC_AMD_VANGOGH_MACH=y
+-- 
+2.55.0
+

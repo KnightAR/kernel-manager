@@ -1,0 +1,22 @@
+{
+  "Package": "linux-headers-7.0.0-31-generic",
+  "Source": "linux-hwe-7.0",
+  "Priority": "optional",
+  "Section": "devel",
+  "Installed-Size": "31256",
+  "Maintainer": "Ubuntu Kernel Team <kernel-team@lists.ubuntu.com>",
+  "Architecture": "amd64",
+  "Version": "7.0.0-31.31~24.04.1",
+  "Provides": "linux-headers, linux-headers-3.0",
+  "Depends": "linux-hwe-7.0-headers-7.0.0-31, libc6 (>= 2.38), libdw1t64 (>= 0.171), libelf1t64 (>= 0.144), libgcc-s1 (>= 4.2), libssl3t64 (>= 3.0.0), zlib1g (>= 1:1.2.3.3)",
+  "Filename": "pool/main/l/linux-hwe-7.0/linux-headers-7.0.0-31-generic_7.0.0-31.31~24.04.1_amd64.deb",
+  "Size": "4173470",
+  "MD5sum": "9f0daedf15e2c68695446691fca23958",
+  "SHA1": "d4eb0ab649c6bb8725e498d6f88c599b068c2f56",
+  "SHA256": "b4bff6ea35a6432482508908af5da5f35171a914cb31dcac5beecef19b81afd2",
+  "SHA512": "3468c4a8c932b1a74c66e339ccc796cfc5991903e4726894a619ed7683e9d6bf76be6f78e5ec4cce20d85a9a50ab534f1e2ec363671904eebfcb07c004877be1",
+  "Description": "Linux kernel headers for version 7.0.0",
+  "Description-md5": "638f86fa13c4c962796b78aa3aad169f",
+  "Origin": "Ubuntu",
+  "Bugs": "https://bugs.launchpad.net/ubuntu/+filebug"
+}

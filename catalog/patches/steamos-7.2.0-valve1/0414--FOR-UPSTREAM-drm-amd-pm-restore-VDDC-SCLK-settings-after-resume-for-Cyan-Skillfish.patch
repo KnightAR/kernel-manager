@@ -1,0 +1,74 @@
+From 8687ba189dbe806d333bf9d0a4cf574f231a5024 Mon Sep 17 00:00:00 2001
+From: Matthew Schwartz <matthew.schwartz@linux.dev>
+Date: Thu, 23 Jul 2026 12:06:26 -0700
+Subject: [PATCH] [FOR-UPSTREAM] drm/amd/pm: restore VDDC/SCLK settings after
+ resume for Cyan Skillfish
+
+User-configured SCLK/VDDC settings from pp_od_clk_voltage do not persist
+across suspend/resume on Cyan Skillfish. The cached values are never
+re-sent to the PMFW after resume.
+
+Flag user_od on commit and add a restore_user_od_settings callback so the
+cached settings are re-applied on resume.
+
+Signed-off-by: Matthew Schwartz <matthew.schwartz@linux.dev>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .../amd/pm/swsmu/smu11/cyan_skillfish_ppt.c   | 27 +++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/drivers/gpu/drm/amd/pm/swsmu/smu11/cyan_skillfish_ppt.c b/drivers/gpu/drm/amd/pm/swsmu/smu11/cyan_skillfish_ppt.c
+index bb9620666dae..b145b9b08136 100644
+--- a/drivers/gpu/drm/amd/pm/swsmu/smu11/cyan_skillfish_ppt.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/cyan_skillfish_ppt.c
+@@ -528,6 +528,12 @@ static int cyan_skillfish_od_edit_dpm_table(struct smu_context *smu,
+ 			}
+ 		}
+ 
++		if (cyan_skillfish_user_settings.sclk != cyan_skillfish_sclk_default ||
++		    cyan_skillfish_user_settings.vddc != CYAN_SKILLFISH_VDDC_MAGIC)
++			smu->user_dpm_profile.user_od = true;
++		else
++			smu->user_dpm_profile.user_od = false;
++
+ 		break;
+ 	default:
+ 		return -EOPNOTSUPP;
+@@ -536,6 +542,26 @@ static int cyan_skillfish_od_edit_dpm_table(struct smu_context *smu,
+ 	return ret;
+ }
+ 
++static int cyan_skillfish_restore_user_od_settings(struct smu_context *smu)
++{
++	uint32_t vid;
++	int ret;
++
++	ret = smu_cmn_send_smc_msg_with_param(smu, SMU_MSG_RequestGfxclk,
++					      cyan_skillfish_user_settings.sclk, NULL);
++	if (ret) {
++		dev_err(smu->adev->dev, "Failed to restore sclk!\n");
++		return ret;
++	}
++
++	if (cyan_skillfish_user_settings.vddc == CYAN_SKILLFISH_VDDC_MAGIC)
++		return smu_cmn_send_smc_msg(smu, SMU_MSG_UnforceGfxVid, NULL);
++
++	vid = (1550 - cyan_skillfish_user_settings.vddc) * 160 / 1000;
++
++	return smu_cmn_send_smc_msg_with_param(smu, SMU_MSG_ForceGfxVid, vid, NULL);
++}
++
+ static int cyan_skillfish_get_dpm_ultimate_freq(struct smu_context *smu,
+ 						enum smu_clk_type clk_type,
+ 						uint32_t *min,
+@@ -591,6 +617,7 @@ static const struct pptable_funcs cyan_skillfish_ppt_funcs = {
+ 	.is_dpm_running = cyan_skillfish_is_dpm_running,
+ 	.get_gpu_metrics = cyan_skillfish_get_gpu_metrics,
+ 	.od_edit_dpm_table = cyan_skillfish_od_edit_dpm_table,
++	.restore_user_od_settings = cyan_skillfish_restore_user_od_settings,
+ 	.get_dpm_ultimate_freq = cyan_skillfish_get_dpm_ultimate_freq,
+ 	.register_irq_handler = smu_v11_0_register_irq_handler,
+ 	.notify_memory_pool_location = smu_v11_0_notify_memory_pool_location,
+-- 
+2.55.0
+

@@ -1,0 +1,51 @@
+From cc145228ff25a5154d8045b8bd6462c1d7d15a67 Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Fri, 17 Jul 2026 14:19:10 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: phy: set CFR to manual mode for
+ some 2GHz channels
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The CFR (Channel Frequency Response) manual mode condition for 2GHz is
+missing to limit on bandwidth for specific channels, which are channel
+13 with 20MHz bandwidth and channel 11 with 40MHz bandwidth. Also add
+a band check to avoid affecting 5GHz/6GHz bands.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260717061910.54466-10-pkshih@realtek.com
+(cherry picked from commit b3dc0a37fd3ad1feb248e7d4c51c49799359b0e2)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/phy_be.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/phy_be.c b/drivers/net/wireless/realtek/rtw89/phy_be.c
+index e471409a4b8f..c06927d1dc78 100644
+--- a/drivers/net/wireless/realtek/rtw89/phy_be.c
++++ b/drivers/net/wireless/realtek/rtw89/phy_be.c
+@@ -707,13 +707,19 @@ void rtw89_phy_bb_wrap_set_rfsi_bandedge_ch(struct rtw89_dev *rtwdev,
+ 					    const struct rtw89_chan *chan,
+ 					    enum rtw89_phy_idx phy_idx)
+ {
++	bool cfr_manual_en = false;
+ 	u32 reg;
+ 	u32 val;
+ 
+ 	val = rtw89_phy_bb_wrap_be_bandedge_decision(rtwdev, chan);
+ 
++	if (chan->band_type == RTW89_BAND_2G &&
++	    ((chan->primary_channel == 13 && chan->band_width == RTW89_CHANNEL_WIDTH_20) ||
++	     (chan->primary_channel == 11 && chan->band_width == RTW89_CHANNEL_WIDTH_40)))
++		cfr_manual_en = true;
++
+ 	rtw89_phy_write32_idx(rtwdev, R_TX_CFR_MANUAL_EN_BE4, B_TX_CFR_MANUAL_EN_BE4_M,
+-			      chan->primary_channel == 13, phy_idx);
++			      cfr_manual_en, phy_idx);
+ 
+ 	reg = rtw89_mac_reg_by_idx(rtwdev, R_BANDEDGE_DBWX_BE4, phy_idx);
+ 	rtw89_write32_mask(rtwdev, reg, B_BANDEDGE_DBW20_BE4, val & BIT(0));
+-- 
+2.55.0
+

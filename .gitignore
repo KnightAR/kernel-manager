@@ -1,0 +1,10 @@
+/build/
+/work/
+/catalog/cache/
+/catalog/.index.lock
+/reports/
+/.agents/
+/.codex/
+/.aws/
+__pycache__/
+*.pyc

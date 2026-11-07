@@ -1,0 +1,29 @@
+From 814bb1a4c84e31106a12236c9f5d896aeb905fb3 Mon Sep 17 00:00:00 2001
+From: Arun Raghavan <arunr@valvesoftware.com>
+Date: Mon, 24 Aug 2026 14:01:48 -0700
+Subject: [PATCH] [FOR-UPSTREAM] Input: xpad - Add support for Turtle Beach
+ Xbox 360 controllers
+
+Adds support for upcoming controllers.
+
+Signed-off-by: Arun Raghavan <arunr@valvesoftware.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/input/joystick/xpad.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/input/joystick/xpad.c b/drivers/input/joystick/xpad.c
+index 1dca51eeec9a..69b6b516c25d 100644
+--- a/drivers/input/joystick/xpad.c
++++ b/drivers/input/joystick/xpad.c
+@@ -410,6 +410,7 @@ static const struct usb_device_id xpad_table[] = {
+ 	XPAD_XBOX360_VENDOR(0x0e6f),		/* 0x0e6f Xbox 360 controllers */
+ 	XPAD_XBOX360_VENDOR(0x0f0d),		/* Hori controllers */
+ 	XPAD_XBOX360_VENDOR(0x1038),		/* SteelSeries controllers */
++	XPAD_XBOX360_VENDOR(0x10f5),            /* Turtle Beach Xbox 360 Controllers */
+ 	XPAD_XBOX360_VENDOR(0x11c9),		/* Nacon GC100XF */
+ 	XPAD_XBOX360_VENDOR(0x11ff),		/* PXN V900 */
+ 	XPAD_XBOX360_VENDOR(0x1209),		/* Ardwiino Controllers */
+-- 
+2.55.0
+

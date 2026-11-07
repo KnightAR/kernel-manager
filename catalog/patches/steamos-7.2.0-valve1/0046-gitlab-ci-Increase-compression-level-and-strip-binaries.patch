@@ -1,0 +1,41 @@
+From f8e203ba44f871abef8fa154bff0fcda22639a5d Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Mon, 4 Mar 2024 11:58:50 +0200
+Subject: [PATCH] gitlab-ci: Increase compression level and strip binaries
+
+Reduce artifact size for build-kernel-neptune by increasing zstd
+compression level to maximum and stripping the kernel binaries.
+
+Additionally, switch to building the kernel as an uncompressed tarball
+since the modules are already compressed.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 8b969073c29d..067d3cfc314f 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -109,12 +109,13 @@ build-kernel-neptune:
+     - cp $BUILD_DIR/.config kernel_config_neptune
+     # Build kernel
+     - make O=$BUILD_DIR -j $(nproc)
+-    - make O=$BUILD_DIR -j $(nproc) tarzst-pkg
+-    - mv $BUILD_DIR/linux-*.tar.zst .
++    - strip -v --strip-debug $BUILD_DIR/vmlinux
++    - ZSTD_CLEVEL=19 make O=$BUILD_DIR -j $(nproc) INSTALL_MOD_STRIP=1 tar-pkg
++    - mv $BUILD_DIR/linux-*.tar .
+   artifacts:
+     paths:
+       - kernel_config_neptune
+-      - linux-*.tar.zst
++      - linux-*.tar
+ 
+ build-kernel-qemu:
+   stage: build-kernel
+-- 
+2.55.0
+

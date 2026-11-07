@@ -1,0 +1,55 @@
+From 4233679559e6566964b3f6f2cd1e02142f269567 Mon Sep 17 00:00:00 2001
+From: Panagiotis Petrakopoulos <npetrakopoulos2003@gmail.com>
+Date: Sat, 13 Jun 2026 01:30:12 +0300
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: use str_enable_disable() helper
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Replace "enable"/"disable" strings in ternary expressions
+with the str_enable_disable() helper from <linux/string_choices.h>.
+This covers the rfkill state log in rtw89_core_rfkill_poll() and
+the DPK on/off log in _dpk_onoff().
+
+No functional change intended.
+
+Signed-off-by: Panagiotis Petrakopoulos <npetrakopoulos2003@gmail.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260612223012.504886-1-npetrakopoulos2003@gmail.com
+(cherry picked from commit 2c0810030cf8a6a04d59cecff4a79d506da177c8)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/core.c         | 2 +-
+ drivers/net/wireless/realtek/rtw89/rtw8851b_rfk.c | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/core.c b/drivers/net/wireless/realtek/rtw89/core.c
+index 68dad6090f87..26b744dfbcf8 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.c
++++ b/drivers/net/wireless/realtek/rtw89/core.c
+@@ -7266,7 +7266,7 @@ void rtw89_core_rfkill_poll(struct rtw89_dev *rtwdev, bool force)
+ 		return;
+ 
+ 	rtw89_info(rtwdev, "rfkill hardware state changed to %s\n",
+-		   blocked ? "disable" : "enable");
++		   str_enable_disable(!blocked));
+ 
+ 	if (blocked)
+ 		set_bit(RTW89_FLAG_HW_RFKILL_STATE, rtwdev->flags);
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8851b_rfk.c b/drivers/net/wireless/realtek/rtw89/rtw8851b_rfk.c
+index e574a9950a3b..a6c7f59223ef 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8851b_rfk.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8851b_rfk.c
+@@ -1874,7 +1874,7 @@ static void _dpk_onoff(struct rtw89_dev *rtwdev, enum rtw89_rf_path path,
+ 			       0xf0000000, val);
+ 
+ 	rtw89_debug(rtwdev, RTW89_DBG_RFK, "[DPK] S%d[%d] DPK %s !!!\n", path,
+-		    kidx, val == 0 ? "disable" : "enable");
++		    kidx, str_enable_disable(val));
+ }
+ 
+ static void _dpk_init(struct rtw89_dev *rtwdev, enum rtw89_rf_path path)
+-- 
+2.55.0
+

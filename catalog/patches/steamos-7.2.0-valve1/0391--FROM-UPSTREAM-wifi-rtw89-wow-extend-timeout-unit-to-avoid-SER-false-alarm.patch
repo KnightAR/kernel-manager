@@ -1,0 +1,37 @@
+From a51406443821315a6f5f4a2f4079a4948fc47fd2 Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Fri, 17 Jul 2026 14:19:07 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: wow: extend timeout unit to
+ avoid SER false alarm
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+With original timeout unit, it might trigger SER false alarm causing
+WiFi card lost. Extend timeout unit to avoid wrong SER.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260717061910.54466-7-pkshih@realtek.com
+(cherry picked from commit ce18a0cbc39b47f4b642b2e28fe1e37176f0b074)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/pci.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/pci.h b/drivers/net/wireless/realtek/rtw89/pci.h
+index 92c30c7f9fb2..339706d99f6c 100644
+--- a/drivers/net/wireless/realtek/rtw89/pci.h
++++ b/drivers/net/wireless/realtek/rtw89/pci.h
+@@ -1022,7 +1022,7 @@
+ #define B_BE_PL1_IGNORE_HOT_RST BIT(30)
+ #define B_BE_PL1_TIMER_UNIT_MASK GENMASK(19, 17)
+ #define PCIE_SER_TIMER_UNIT 0x2
+-#define PCIE_SER_WOW_TIMER_UNIT 0x4
++#define PCIE_SER_WOW_TIMER_UNIT 0x7
+ #define B_BE_PL1_TIMER_CLEAR BIT(0)
+ 
+ #define R_BE_REG_PL1_MASK 0x34B0
+-- 
+2.55.0
+

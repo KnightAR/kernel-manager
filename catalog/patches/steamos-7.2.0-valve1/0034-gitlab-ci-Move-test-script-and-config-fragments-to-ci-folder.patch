@@ -1,0 +1,53 @@
+From d5bdafaf18cabe1744163f25eb4583ac81ba0c9c Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Fri, 1 Mar 2024 00:20:06 +0200
+Subject: [PATCH] gitlab-ci: Move test script and config fragments to ci folder
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml                                      | 3 ++-
+ .config-fragment => ci/.config-fragment             | 0
+ .config-fragment-extra => ci/.config-fragment-extra | 0
+ kernel_test.sh => ci/kernel_test.sh                 | 0
+ 4 files changed, 2 insertions(+), 1 deletion(-)
+ rename .config-fragment => ci/.config-fragment (100%)
+ rename .config-fragment-extra => ci/.config-fragment-extra (100%)
+ rename kernel_test.sh => ci/kernel_test.sh (100%)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 0b141abb1073..350037c9820d 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -38,7 +38,7 @@ kernel build:
+         "CONFIG_EXTRA_FIRMWARE=\"${FW_FILES}\"" &> .config-fragment-firmware
+     # Prepare kernel config
+     - make x86_64_defconfig && make kvm_guest.config
+-    - ./scripts/kconfig/merge_config.sh .config .config-fragment .config-fragment-extra .config-fragment-firmware
++    - ./scripts/kconfig/merge_config.sh .config ci/.config-fragment ci/.config-fragment-extra .config-fragment-firmware
+     - cp .config kernel_config
+     # Build kernel
+     - make -j $(nproc)
+@@ -47,6 +47,7 @@ kernel build:
+     # Download rootfs
+     - 'curl -L --header "PRIVATE-TOKEN: ${KERNEL_RESEARCH_ROOTFS_TOKEN}" "${ROOTFS_IMAGE_URL}" --output artifact.zip'
+     - unzip artifact.zip
++    - cp ci/kernel_test.sh .
+     # Start QEMU
+     - qemu-system-x86_64 -enable-kvm -nographic -kernel ${KERNEL} -drive file=${ROOTFS_NAME},format=raw -device virtio-serial-pci -virtfs local,path=$(pwd),mount_tag=steamlogs,security_model=none -m 2G -smp $(nproc --ignore=1) -cpu host -net user,hostfwd=tcp::2222-:22 -net nic,model=virtio --append "root=/dev/sda rw console=ttyS0" &
+     - QEMU_PID=$!
+diff --git a/.config-fragment b/ci/.config-fragment
+similarity index 100%
+rename from .config-fragment
+rename to ci/.config-fragment
+diff --git a/.config-fragment-extra b/ci/.config-fragment-extra
+similarity index 100%
+rename from .config-fragment-extra
+rename to ci/.config-fragment-extra
+diff --git a/kernel_test.sh b/ci/kernel_test.sh
+similarity index 100%
+rename from kernel_test.sh
+rename to ci/kernel_test.sh
+-- 
+2.55.0
+

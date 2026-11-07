@@ -1,0 +1,46 @@
+From e6e295791656db001441d987a1a0a6e7f5e96463 Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Thu, 25 Jun 2026 14:15:38 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: fw: lower debug level for UDM1
+ debug register
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The UDM1 is user define message to record count of H2C command sent by
+driver and received by firmware. Normally, this value should be zero.
+Otherwise, throw a warning.
+
+For the new chip RTL8922DE, its default value is not zero, causing a
+warning at first time probe. Since this is a debug purpose and the
+value will be set to zero right after this checking, lower the debug level.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260625061545.44808-4-pkshih@realtek.com
+(cherry picked from commit e50c0fb7867e6b2b0714c79b8385ab6db2c5567a)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/mac_be.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/mac_be.c b/drivers/net/wireless/realtek/rtw89/mac_be.c
+index 4cb48cf9415a..d9c93adb58ee 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac_be.c
++++ b/drivers/net/wireless/realtek/rtw89/mac_be.c
+@@ -652,8 +652,10 @@ static int wcpu_on(struct rtw89_dev *rtwdev, u8 boot_reason, bool dlfw)
+ 	}
+ 	val32 = rtw89_read32(rtwdev, R_BE_UDM1);
+ 	if (val32) {
+-		rtw89_warn(rtwdev, "[SER] AON L2 Debug register not empty before Boot.\n");
+-		rtw89_warn(rtwdev, "[SER] %s: R_BE_UDM1 = 0x%x\n", __func__, val32);
++		rtw89_debug(rtwdev, RTW89_DBG_UNEXP,
++			    "[SER] AON L2 Debug register not empty before Boot.\n");
++		rtw89_debug(rtwdev, RTW89_DBG_UNEXP,
++			    "[SER] %s: R_BE_UDM1 = 0x%x\n", __func__, val32);
+ 	}
+ 	val32 = rtw89_read32(rtwdev, R_BE_UDM2);
+ 	if (val32) {
+-- 
+2.55.0
+

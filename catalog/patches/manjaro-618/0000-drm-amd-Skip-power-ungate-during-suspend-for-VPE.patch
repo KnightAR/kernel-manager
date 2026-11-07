@@ -1,0 +1,86 @@
+From mboxrd@z Thu Jan  1 00:00:00 1970
+Received: from smtp.kernel.org (aws-us-west-2-korg-mail-1.web.codeaurora.org [10.30.226.201])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
+	(No client certificate requested)
+	by smtp.subspace.kernel.org (Postfix) with ESMTPS id A857D184E
+	for <stable@vger.kernel.org>; Sun, 30 Nov 2025 01:46:42 +0000 (UTC)
+Authentication-Results: smtp.subspace.kernel.org; arc=none smtp.client-ip=10.30.226.201
+ARC-Seal:i=1; a=rsa-sha256; d=subspace.kernel.org; s=arc-20240116;
+	t=1764467202; cv=none; b=K25mmT1BEEQIucv1QooTaiLQm1VD120aWBuy20jrXNpiXKjZgD9CCNyft3VLBgZf3PzTHlKfnWSzoK2ezQ49OGV+M2W21ZFvFf62gxqOGi1UJ3amas2DJtKzKwnvxSCor2sg4pBOSsvhjL//QgyaqJjMWFhvT8WWEGwd7pcteS0=
+ARC-Message-Signature:i=1; a=rsa-sha256; d=subspace.kernel.org;
+	s=arc-20240116; t=1764467202; c=relaxed/simple;
+	bh=OqXlEtz2rn8wqWNvDF9whkiZxpiuh7vhQ56XscaI0bU=;
+	h=From:To:Cc:Subject:Date:Message-ID:MIME-Version; b=pXPLMBKgjVrXkzWCGjNUEJhxpaZvu+jMzAiLAOJ+Q3fdYx4r3YrmoJImwFNnRjqgcVlG76EzLY1p95uliB+qopQA/5ecUS9Vt2vTY8fEvyX6BJFNssiYp7MXOqtG6Pku5I2dZ1c6zFdz1CRcw5Z9ceQnf6iqLOaCXfOcvLJ9kCU=
+ARC-Authentication-Results:i=1; smtp.subspace.kernel.org; dkim=pass (2048-bit key) header.d=kernel.org header.i=@kernel.org header.b=PQdbTdvB; arc=none smtp.client-ip=10.30.226.201
+Authentication-Results: smtp.subspace.kernel.org;
+	dkim=pass (2048-bit key) header.d=kernel.org header.i=@kernel.org header.b="PQdbTdvB"
+Received: by smtp.kernel.org (Postfix) with ESMTPSA id D483FC4CEF7;
+	Sun, 30 Nov 2025 01:46:41 +0000 (UTC)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/simple; d=kernel.org;
+	s=k20201202; t=1764467202;
+	bh=OqXlEtz2rn8wqWNvDF9whkiZxpiuh7vhQ56XscaI0bU=;
+	h=From:To:Cc:Subject:Date:From;
+	b=PQdbTdvBWFT60cxRW2RvBOZ8zmLanqsMd3RIHqQwniDx1lzIKhwePj904rGMhxp1p
+	 9CZ9WJ+j6Qv7aP5efc3UMkn+m3+5XXczxEOnfbWHSnydrJi/6N4PctPu9v7Y8lHAda
+	 4X55O99OOxUzPKZYJ3bVfdIQKvKOyq4YGUhX7qRORZHQ6nHv5yxo+ofrgZ5ujVzheH
+	 H3DQ+0/k7Pnwb+JprVLt2xG5c3H33cDDHnLRAGEkvujNP0jL3DcRa+jG2jowXxByf0
+	 0ZSS1hKlEJpFNCPw+0Rv+N5n4bbX11Db6sJJngM+eX2n0q7HVYCxSiFFDPU09gDb1h
+	 qRclpWnngrchw==
+From: "Mario Limonciello (AMD)" <superm1@kernel.org>
+To: amd-gfx@lists.freedesktop.org
+Cc: "Mario Limonciello (AMD)" <superm1@kernel.org>,
+	stable@vger.kernel.org
+Subject: [PATCH] Revert "drm/amd: Skip power ungate during suspend for VPE"
+Date: Sat, 29 Nov 2025 19:46:31 -0600
+Message-ID: <20251130014631.29755-1-superm1@kernel.org>
+X-Mailer: git-send-email 2.43.0
+Precedence: bulk
+X-Mailing-List: stable@vger.kernel.org
+List-Id: <stable.vger.kernel.org>
+List-Subscribe: <mailto:stable+subscribe@vger.kernel.org>
+List-Unsubscribe: <mailto:stable+unsubscribe@vger.kernel.org>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+Skipping power ungate exposed some scenarios that will fail
+like below:
+
+```
+amdgpu: Register(0) [regVPEC_QUEUE_RESET_REQ] failed to reach value 0x00000000 != 0x00000001n
+amdgpu 0000:c1:00.0: amdgpu: VPE queue reset failed
+...
+amdgpu: [drm] *ERROR* wait_for_completion_timeout timeout!
+```
+
+The underlying s2idle issue that prompted this commit is going to
+be fixed in BIOS.
+This reverts commit 31ab31433c9bd2f255c48dc6cb9a99845c58b1e4.
+
+Fixes: 31ab31433c9bd ("drm/amd: Skip power ungate during suspend for VPE")
+Cc: stable@vger.kernel.org
+Signed-off-by: Mario Limonciello (AMD) <superm1@kernel.org>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_device.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
+index 076bbc09f30ce..2819aceaab749 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
+@@ -3414,11 +3414,10 @@ int amdgpu_device_set_pg_state(struct amdgpu_device *adev,
+ 		    (adev->ip_blocks[i].version->type == AMD_IP_BLOCK_TYPE_GFX ||
+ 		     adev->ip_blocks[i].version->type == AMD_IP_BLOCK_TYPE_SDMA))
+ 			continue;
+-		/* skip CG for VCE/UVD/VPE, it's handled specially */
++		/* skip CG for VCE/UVD, it's handled specially */
+ 		if (adev->ip_blocks[i].version->type != AMD_IP_BLOCK_TYPE_UVD &&
+ 		    adev->ip_blocks[i].version->type != AMD_IP_BLOCK_TYPE_VCE &&
+ 		    adev->ip_blocks[i].version->type != AMD_IP_BLOCK_TYPE_VCN &&
+-		    adev->ip_blocks[i].version->type != AMD_IP_BLOCK_TYPE_VPE &&
+ 		    adev->ip_blocks[i].version->type != AMD_IP_BLOCK_TYPE_JPEG &&
+ 		    adev->ip_blocks[i].version->funcs->set_powergating_state) {
+ 			/* enable powergating to save power */
+-- 
+2.43.0
+
+

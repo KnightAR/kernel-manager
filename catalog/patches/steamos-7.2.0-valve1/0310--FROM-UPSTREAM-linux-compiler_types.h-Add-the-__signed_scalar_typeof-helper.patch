@@ -1,0 +1,67 @@
+From 636d9e7b613b1ba1005d11a8cb38d0c0372db2f0 Mon Sep 17 00:00:00 2001
+From: Peter Zijlstra <peterz@infradead.org>
+Date: Thu, 27 Nov 2025 16:39:44 +0100
+Subject: [PATCH] [FROM-UPSTREAM] <linux/compiler_types.h>: Add the
+ __signed_scalar_typeof() helper
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Define __signed_scalar_typeof() to declare a signed scalar type, leaving
+non-scalar types unchanged.
+
+To be used to clean up the scheduler load-balancing code a bit.
+
+[ mingo: Split off this patch from the scheduler patch. ]
+
+Signed-off-by: Peter Zijlstra (Intel) <peterz@infradead.org>
+Signed-off-by: Ingo Molnar <mingo@kernel.org>
+Cc: Dietmar Eggemann <dietmar.eggemann@arm.com>
+Cc: Juri Lelli <juri.lelli@redhat.com>
+Cc: Linus Torvalds <torvalds@linux-foundation.org>
+Cc: Mel Gorman <mgorman@suse.de>
+Cc: Peter Zijlstra <peterz@infradead.org>
+Cc: Shrikanth Hegde <sshegde@linux.ibm.com>
+Cc: Valentin Schneider <vschneid@redhat.com>
+Cc: Vincent Guittot <vincent.guittot@linaro.org>
+Link: https://patch.msgid.link/20251127154725.413564507@infradead.org
+(cherry picked from commit 38a68b982dd0b10e3da943f100e034598326eafe)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ include/linux/compiler_types.h | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/include/linux/compiler_types.h b/include/linux/compiler_types.h
+index c5921f139007..5e13215c1bc2 100644
+--- a/include/linux/compiler_types.h
++++ b/include/linux/compiler_types.h
+@@ -639,6 +639,25 @@ struct ftrace_likely_data {
+ 
+ #endif /* !__ASSEMBLY__ */
+ 
++/*
++ * __signed_scalar_typeof(x) - Declare a signed scalar type, leaving
++ *			       non-scalar types unchanged.
++ */
++
++#define __scalar_type_to_signed_cases(type)				\
++		unsigned type:	(signed type)0,				\
++		signed type:	(signed type)0
++
++#define __signed_scalar_typeof(x) typeof(				\
++		_Generic((x),						\
++			 char:	(signed char)0,				\
++			 __scalar_type_to_signed_cases(char),		\
++			 __scalar_type_to_signed_cases(short),		\
++			 __scalar_type_to_signed_cases(int),		\
++			 __scalar_type_to_signed_cases(long),		\
++			 __scalar_type_to_signed_cases(long long),	\
++			 default: (x)))
++
+ /*
+  * __signed_scalar_typeof(x) - Declare a signed scalar type, leaving
+  *			       non-scalar types unchanged.
+-- 
+2.55.0
+

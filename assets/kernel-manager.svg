@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <!-- SPDX-License-Identifier: GPL-2.0-only -->
+  <title id="title">Kernel Manager</title>
+  <desc id="desc">A teal processor with a dark K at its core.</desc>
+  <path d="M24 3v9m16-9v9M24 52v9m16-9v9M3 24h9m-9 16h9m40-16h9m-9 16h9"
+        fill="none" stroke="#7891a6" stroke-width="4" stroke-linecap="round"/>
+  <rect x="9" y="9" width="46" height="46" rx="10" fill="#172538" stroke="#7891a6" stroke-width="2"/>
+  <rect x="16" y="16" width="32" height="32" rx="5" fill="#55dbc1"/>
+  <path d="M25 23v18m14-18L25 33m6-5 9 13"
+        fill="none" stroke="#172538" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

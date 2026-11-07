@@ -1,0 +1,63 @@
+From d39b4282853d0af58cf47fcde20ac6ff126a3f8a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?N=C3=ADcolas=20F=2E=20R=2E=20A=2E=20Prado?=
+ <nfraprado@collabora.com>
+Date: Tue, 25 Aug 2026 13:54:07 -0400
+Subject: [PATCH] linux-integration 7.2.0-valve1
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+TL;DR: Feature pairity with 6.18.46-valve1, plus updated xbox GIP
+support. No known issues.
+
+Changes since 7.2.0-rc3-valve-beta1:
+- Rebase on 7.2
+- HID: hid-msi: Update driver to version landed upstream
+- Update Steam controller support to match what landed upstream
+- Add HDMI VRR support
+- Fix crash on MSI Claw devices that don't have any WMI quirk set
+- Fix 5GHz connection instability on ath11k with APs reporting invalid
+  MCS
+- Fix power supply status wrongly reported as charging when connected to
+  underpower power supply
+- msi-wmi-platform: Enable TDP Support for MSI Claw A8 and 8 EX
+- Update rtw89 backport to latest from rtw-next (until 38c58d541cfe)
+- PCI + mmc: Fix hard-lock on resume from s2idle when SD/MMC
+  card present on MSI Claw A8
+- drm/amd/pm: Restore user-set GPU frequency after resume on AMD APUs
+- drm/amd/display: Allow setting a floor for UCLK frequency to
+  workaround HDA DMA dropouts
+- drm/amdgpu: Disable runtime PM for externally attached dGPUs
+- Various drm/amd fixes and improvements including drm_exec usage,
+  cgroup throttling for memory eviction (except on APUs), and fixes for
+  flip_done timedout events and GPU resets with VRR enabled
+- drm/amdgpu: Reenable cgroup protection on APUs
+- drm/amdgpu: Explicit sync for PRT unmaps
+- drm/amdgpu: Use drm_exec in TTM and page table allocations
+- input/xpad: Add support for Turtle Beach Xbox 360 controllers
+- pinctrl-amd: Revert S4 wake bit clear omission that caused Steam
+  Machine to immediately power back up after a power down
+- Update xbox GIP support
+
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index ddcc6dca1ece..b020ebd57261 100644
+--- a/Makefile
++++ b/Makefile
+@@ -2,7 +2,7 @@
+ VERSION = 7
+ PATCHLEVEL = 2
+ SUBLEVEL = 0
+-EXTRAVERSION =
++EXTRAVERSION = -valve1
+ NAME = Baby Opossum Posse
+ 
+ # *DOCUMENTATION*
+-- 
+2.55.0
+

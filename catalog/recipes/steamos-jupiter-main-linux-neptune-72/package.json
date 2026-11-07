@@ -1,0 +1,19 @@
+{
+  "FILENAME": "linux-neptune-72-headers-7.2.0.valve1-1-x86_64.pkg.tar.zst",
+  "NAME": "linux-neptune-72-headers",
+  "BASE": "linux-neptune-72",
+  "VERSION": "7.2.0.valve1-1",
+  "DESC": "Headers and scripts for building modules for the Linux kernel",
+  "CSIZE": "43141921",
+  "ISIZE": "162425439",
+  "MD5SUM": "1cd40b2556133c7d435ec2ff70fc5b53",
+  "SHA256SUM": "45dbbea48c45c6e40b35148f3f19f8cc877da2c9e976a6677c96fede05f54346",
+  "PGPSIG": "iQIzBAABCgAdFiEEiJtevd1QWmg2IZANrx0hme8KPM8FAmqPfFUACgkQrx0hme8KPM/Y4w//QD1Drte1W3vXTym8RR8a2bUcH+qtqcHTrQjfwxTJW2YaMN7MTEV732X5lcF1gr33e+XHb9szyDCXJRCcpN9HZmLPQIOjNEwDQXX7xDegYHBzkjgBHGaMqcCuUd1SVbqH0r9hyR5eRGavFGkUq/KuK0liIpxnhYicQOdTpAOFIsddpQQraqhsBV4kzl1xlRFfZJL07BXbYDtLNamc8TT8Al1A+Ex4rI0spmErZQO6GAL5Upg32ssSlgx1sviGR/QI9WXjlY6tWfVAj5e/eKMfMXKOKoepBs967ovr/9zzhzg9bpUP+SmuqV4PJ0AcN2WxTTDh1tBmCGsdu02aMI3q+ALoPXAiWs7KjxZfcch4G0A6wZ9KL9WU1XERjMosRWZ2ametbJWvaxdeba0rf4o0LKBoEuAUzhjVI0guc8YwxGcOiV7nPKT7x1pWZJsIcs8+eVrnaZvIurhuBYAaRmFGPvZ6v7/SDqHnFKBCj+zyRw3tDyvADNIvyM+uOUIe1eb4DS7AtgL4OGnzVZqHqE3RW5FN3NRpFwli++AQYTL9bKoCzDCW19bbvL3wG7Hn0ehVdLSSJbprMFEROp0Eijn2adw6X55I135MN03sDnEcQXW2Dr1Wfmro9QdT9N7BTawuy237rzCkr4R8wuCf96YtIdwalUOMinmpyCLthkCKfYo=",
+  "URL": "https://gitlab.steamos.cloud/jupiter/linux-integration/-/tree/7.2.0-valve1",
+  "LICENSE": "GPL-2.0-only",
+  "ARCH": "x86_64",
+  "BUILDDATE": "1787787607",
+  "PACKAGER": "GitLab CI Package Builder <ci-package-builder-1@steamos.cloud>",
+  "DEPENDS": "pahole",
+  "MAKEDEPENDS": "bc\ncpio\ngettext\nlibelf\npahole\nperl\npython\ntar\nxz\ngit\nopenssh"
+}

@@ -1,0 +1,19 @@
+{
+  "Package": "linux-headers-7.1.1-76070101-generic",
+  "Architecture": "amd64",
+  "Version": "7.1.1-76070101.202606191302~1782222967~22.04~dfed2f1",
+  "Priority": "optional",
+  "Section": "devel",
+  "Source": "linux",
+  "Maintainer": "Ubuntu Kernel Team <kernel-team@lists.ubuntu.com>",
+  "Installed-Size": "31308",
+  "Provides": "linux-headers, linux-headers-3.0",
+  "Depends": "linux-headers-7.1.1-76070101, libc6 (>= 2.34), libdw1 (>= 0.171), libelf1 (>= 0.144), libssl3 (>= 3.0.0~~alpha1), zlib1g (>= 1:1.2.3.3)",
+  "Filename": "pool/jammy/linux/dfed2f1508608c2a1267db784df84e975e1c30e3/linux-headers-7.1.1-76070101-generic_7.1.1-76070101.202606191302~1782222967~22.04~dfed2f1_amd64.deb",
+  "Size": "4068930",
+  "MD5sum": "4640ffd1abb23b5339938965b00a09bb",
+  "SHA1": "9420373ec901cfbc0024533ef26458c3a850f868",
+  "SHA256": "73dae349004e9401c19feabb092619426ae7588250a1e5813a62c17d508aeb17",
+  "SHA512": "d963e836849dd7f028eaa1da3e1d307eed41d8d1599122da96cd55c09a8047a4205a1a0146ed1b2c78273565055a00554767fa5ff7f7f1ba65639d6f96ffa587",
+  "Description": "Linux kernel headers for version 7.1.1\nThis package provides kernel header files for version 7.1.1.\n.\nThis is for sites that want the latest kernel headers.  Please read\n/usr/share/doc/linux-headers-7.1.1-76070101/debian.README.gz for details."
+}

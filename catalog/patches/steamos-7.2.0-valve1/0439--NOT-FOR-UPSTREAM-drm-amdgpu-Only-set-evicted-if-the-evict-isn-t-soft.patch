@@ -1,0 +1,71 @@
+From 532c4a791fbc5e239395bc9bfe137f087d21723d Mon Sep 17 00:00:00 2001
+From: Natalie Vock <natalie.vock@gmx.de>
+Date: Thu, 25 Jun 2026 15:44:34 +0200
+Subject: [PATCH] [NOT-FOR-UPSTREAM] drm/amdgpu: Only set evicted if the evict
+ isn't soft
+
+Makes us able to soft-evict already-reserved buffers without
+re-validating them.
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_object.c | 5 ++++-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c     | 4 ++--
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h     | 2 +-
+ 3 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c
+index 9a46fa9e6086..4648a5404b34 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c
+@@ -1280,7 +1280,10 @@ void amdgpu_bo_move_notify(struct ttm_buffer_object *bo,
+ 		return;
+ 
+ 	abo = ttm_to_amdgpu_bo(bo);
+-	amdgpu_vm_bo_move(abo, new_mem, evict);
++	bool soft_evict = new_mem &&
++			  amdgpu_mem_type_to_domain(new_mem->mem_type) &
++				  abo->allowed_domains;
++	amdgpu_vm_bo_move(abo, new_mem, evict, soft_evict);
+ 
+ 	amdgpu_bo_kunmap(abo);
+ 
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+index bc1fbc7a016b..cb88ec23116c 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+@@ -2367,7 +2367,7 @@ void amdgpu_vm_bo_invalidate(struct amdgpu_bo *bo, bool evicted)
+  * Update the memory stats for the new placement and mark @bo as invalid.
+  */
+ void amdgpu_vm_bo_move(struct amdgpu_bo *bo, struct ttm_resource *new_mem,
+-		       bool evicted)
++		       bool evicted, bool soft_evicted)
+ {
+ 	struct amdgpu_vm_bo_base *bo_base;
+ 
+@@ -2380,7 +2380,7 @@ void amdgpu_vm_bo_move(struct amdgpu_bo *bo, struct ttm_resource *new_mem,
+ 		spin_unlock(&vm->stats_lock);
+ 	}
+ 
+-	amdgpu_vm_bo_invalidate(bo, evicted);
++	amdgpu_vm_bo_invalidate(bo, evicted && !soft_evicted);
+ }
+ 
+ /**
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+index 763f06b166a1..2b344298ada8 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+@@ -553,7 +553,7 @@ void amdgpu_vm_update_stats(struct amdgpu_vm_bo_base *base,
+ 			    struct ttm_resource *new_res, int sign);
+ void amdgpu_vm_bo_update_shared(struct amdgpu_bo *bo);
+ void amdgpu_vm_bo_move(struct amdgpu_bo *bo, struct ttm_resource *new_mem,
+-		       bool evicted);
++		       bool evicted, bool soft_evicted);
+ uint64_t amdgpu_vm_map_gart(const dma_addr_t *pages_addr, uint64_t addr);
+ struct amdgpu_bo_va *amdgpu_vm_bo_find(struct amdgpu_vm *vm,
+ 				       struct amdgpu_bo *bo);
+-- 
+2.55.0
+

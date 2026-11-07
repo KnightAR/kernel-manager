@@ -1,0 +1,33 @@
+From ee449e68bfeba6a859c7070e2a8cb8c2c2311312 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <nat@pixelcluster.dev>
+Date: Wed, 12 Aug 2026 13:26:13 +0200
+Subject: [PATCH] [FROM-ML] drm/amdgpu: Bump minor version
+
+To signal availability of explicit PRT sync to userspace.
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Link: https://lore.kernel.org/amd-gfx/20260529-prt-explicit-sync-v1-3-9f1c60955cab@gmx.de/T
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+index 3722c302ee73..1d7f665bfe01 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+@@ -127,9 +127,10 @@
+  * - 3.62.0 - Add AMDGPU_IDS_FLAGS_MODE_PF, AMDGPU_IDS_FLAGS_MODE_VF & AMDGPU_IDS_FLAGS_MODE_PT
+  * - 3.63.0 - GFX12 display DCC supports 256B max compressed block size
+  * - 3.64.0 - Userq IP support query
++ * - 3.65.0 - VM PRT explicit sync
+  */
+ #define KMS_DRIVER_MAJOR	3
+-#define KMS_DRIVER_MINOR	64
++#define KMS_DRIVER_MINOR	65
+ #define KMS_DRIVER_PATCHLEVEL	0
+ 
+ /*
+-- 
+2.55.0
+

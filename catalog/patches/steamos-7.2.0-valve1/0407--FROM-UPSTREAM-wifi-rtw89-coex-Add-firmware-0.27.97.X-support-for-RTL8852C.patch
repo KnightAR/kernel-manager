@@ -1,0 +1,45 @@
+From b9e0c2ba4894bb72fc3724d4757454c8d016073e Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Fri, 17 Jul 2026 14:57:39 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Add firmware 0.27.97.X
+ support for RTL8852C
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Newer firmware is using the new TLV-Header format, without this patch
+it will lead driver run into length mismatch state.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260717065739.64124-14-pkshih@realtek.com
+(cherry picked from commit 38c58d541cfe286880cdadebc5d726fe18e3b615)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/coex.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/coex.c b/drivers/net/wireless/realtek/rtw89/coex.c
+index b95e34cb1567..6a1888d8c476 100644
+--- a/drivers/net/wireless/realtek/rtw89/coex.c
++++ b/drivers/net/wireless/realtek/rtw89/coex.c
+@@ -214,6 +214,15 @@ static const struct rtw89_btc_ver rtw89_btc_ver_defs[] = {
+ 	 .max_role_num = 6, .fcxosi = 0,  .fcxmlo = 0,   .bt_desired = 7,
+ 	 .fcxtrx = 0,
+ 	},
++	{RTL8852C, RTW89_FW_VER_CODE(0, 27, 97, 0),
++	 .fcxbtcrpt = 4, .fcxtdma = 4,    .fcxslots = 2, .fcxcysta = 105,
++	 .fcxstep = 3,   .fcxnullsta = 2, .fcxmreg = 2,  .fcxgpiodbg = 1,
++	 .fcxbtver = 1,  .fcxbtscan = 2,  .fcxbtafh = 2, .fcxbtdevinfo = 1,
++	 .fwlrole = 101, .frptmap = 3,    .fcxctrl = 1,  .fcxinit = 0,
++	 .fwevntrptl = 0, .fwc2hfunc = 1, .drvinfo_ver = 0, .info_buf = 1280,
++	 .max_role_num = 5, .fcxosi = 0,  .fcxmlo = 0,   .bt_desired = 7,
++	 .fcxtrx = 107,
++	},
+ 	{RTL8852C, RTW89_FW_VER_CODE(0, 27, 57, 0),
+ 	 .fcxbtcrpt = 4, .fcxtdma = 3,    .fcxslots = 1, .fcxcysta = 3,
+ 	 .fcxstep = 3,   .fcxnullsta = 2, .fcxmreg = 1,  .fcxgpiodbg = 1,
+-- 
+2.55.0
+

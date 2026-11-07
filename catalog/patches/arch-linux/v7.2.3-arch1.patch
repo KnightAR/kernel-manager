@@ -1,0 +1,73 @@
+ Makefile      |  2 +-
+ kernel/fork.c | 24 ++++++++++++++++++++++++
+ 2 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 150b1c1d7bede8f5e4a8b93a9f8c89bf9e2b5441..5e2aaac6061e4308dd1f5a6bd8bcb3dec6768dc1 100644
+--- a/Makefile
++++ b/Makefile
+@@ -2,7 +2,7 @@
+ VERSION = 7
+ PATCHLEVEL = 2
+ SUBLEVEL = 3
+-EXTRAVERSION =
++EXTRAVERSION = -arch1
+ NAME = Baby Opossum Posse
+ 
+ # *DOCUMENTATION*
+diff --git a/kernel/fork.c b/kernel/fork.c
+index f0e2e131a9a5af7b25e71c1d28af1a6aebdc4319..7b611da9a27a12c62ffb3d016503e86eb51af850 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -127,6 +127,12 @@
+ 
+ #include <kunit/visibility.h>
+ 
++#ifdef CONFIG_USER_NS
++static int unprivileged_userns_clone = 1;
++#else
++#define unprivileged_userns_clone 1
++#endif
++
+ /*
+  * Minimum number of threads to boot the kernel
+  */
+@@ -2093,6 +2099,11 @@ __latent_entropy struct task_struct *copy_process(
+ 			return ERR_PTR(-EPERM);
+ 	}
+ 
++	if ((clone_flags & CLONE_NEWUSER) && !unprivileged_userns_clone) {
++		if (!capable(CAP_SYS_ADMIN))
++			return ERR_PTR(-EPERM);
++	}
++
+ 	/*
+ 	 * Force any signals received before this point to be delivered
+ 	 * before the fork happens.  Collect up signals sent to multiple
+@@ -3163,6 +3174,10 @@ static int check_unshare_flags(unsigned long unshare_flags)
+ 		if (!current_is_single_threaded())
+ 			return -EINVAL;
+ 	}
++	if ((unshare_flags & CLONE_NEWUSER) && !unprivileged_userns_clone) {
++		if (!capable(CAP_SYS_ADMIN))
++			return -EPERM;
++	}
+ 
+ 	return 0;
+ }
+@@ -3398,6 +3413,15 @@ static const struct ctl_table fork_sysctl_table[] = {
+ 		.mode		= 0644,
+ 		.proc_handler	= sysctl_max_threads,
+ 	},
++#ifdef CONFIG_USER_NS
++	{
++		.procname	= "unprivileged_userns_clone",
++		.data		= &unprivileged_userns_clone,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec,
++	},
++#endif
+ };
+ 
+ static int __init init_fork_sysctl(void)

@@ -1,0 +1,129 @@
+From mboxrd@z Thu Jan  1 00:00:00 1970
+Received: from mail-wm1-f51.google.com (mail-wm1-f51.google.com [209.85.128.51])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES128-GCM-SHA256 (128/128 bits))
+	(No client certificate requested)
+	by smtp.subspace.kernel.org (Postfix) with ESMTPS id 62FE13587C4
+	for <platform-driver-x86@vger.kernel.org>; Wed, 21 Jan 2026 14:36:04 +0000 (UTC)
+Authentication-Results: smtp.subspace.kernel.org; arc=none smtp.client-ip=209.85.128.51
+ARC-Seal:i=1; a=rsa-sha256; d=subspace.kernel.org; s=arc-20240116;
+	t=1769006169; cv=none; b=AW84wS3TV3d+MDX+4YjqjZDXJiETKyt1luBdmpPQS+oXDtVtc466479GIqzktV2r8gv7m6TUzLnaPyzAwxA2tCleTVZTtB4G2LxnJPaqXzQxKbeanCt7GWrfLWqYLMr0Lp2LVZtEX3so/kT79hkBiOs+jETb/SIhlZixEo7z1OQ=
+ARC-Message-Signature:i=1; a=rsa-sha256; d=subspace.kernel.org;
+	s=arc-20240116; t=1769006169; c=relaxed/simple;
+	bh=ASRWmJos2gfBH/5HHTZK+Ocn71W1XkJKwGocrnSMm/w=;
+	h=From:To:Cc:Subject:Date:Message-ID:MIME-Version; b=LvNCPbyLuP/TY9kmsUVEUErdPUgYeJEZNgLcIAh+JHnARUYKG8geqCO1svbEFgcL+Yb1mAAOiqSJnSBW68d4mv6M8Qu7A0vsOlX+lJHhDdC4vnGgotM8ZciZXvd84TXayssRQHOOtIO34ltf/yU4aSdK2OA0KN4YvxEIh82zQVI=
+ARC-Authentication-Results:i=1; smtp.subspace.kernel.org; dmarc=pass (p=none dis=none) header.from=gmail.com; spf=pass smtp.mailfrom=gmail.com; dkim=pass (2048-bit key) header.d=gmail.com header.i=@gmail.com header.b=S+Z0tf6C; arc=none smtp.client-ip=209.85.128.51
+Authentication-Results: smtp.subspace.kernel.org; dmarc=pass (p=none dis=none) header.from=gmail.com
+Authentication-Results: smtp.subspace.kernel.org; spf=pass smtp.mailfrom=gmail.com
+Authentication-Results: smtp.subspace.kernel.org;
+	dkim=pass (2048-bit key) header.d=gmail.com header.i=@gmail.com header.b="S+Z0tf6C"
+Received: by mail-wm1-f51.google.com with SMTP id 5b1f17b1804b1-47ee76e8656so79395765e9.0
+        for <platform-driver-x86@vger.kernel.org>; Wed, 21 Jan 2026 06:36:04 -0800 (PST)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1769006162; x=1769610962; darn=vger.kernel.org;
+        h=content-transfer-encoding:mime-version:message-id:date:subject:cc
+         :to:from:from:to:cc:subject:date:message-id:reply-to;
+        bh=eXjmGuYtXXzayPhEjyl7sC3E97S/R1O+zBI0ZUSLmSc=;
+        b=S+Z0tf6CPWV/lSWfV4bfiLnRbebdTicvmdDI3+0nGxuEFMZ6ePGZquM/eMjQfD7/4N
+         zJyAQPoxamxVny/vchxh4/EZQ3v06s/TjtkpcfiPF60ydEK5t4QLSzAHsCndQMMQ+5ug
+         g6i5X22eY1fz9eY/fCxlX8fcrJc7hgxcEdc3BQgGsQGroy5qrEcjMH0MRMJaNCEaM6uP
+         Gkf//QZyz91/jCUn/FtWexSBGuPkwNsoZ1Zt3u9QclTy2EwgyWo02ultdnDtMSrT0h9t
+         r9zUItHq5ELL3SSWu3BA0Uu5eTzE80Dll18LtWieom2mE/7iuBrh3MS/b3m0A6PFT/LN
+         DLHQ==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1769006162; x=1769610962;
+        h=content-transfer-encoding:mime-version:message-id:date:subject:cc
+         :to:from:x-gm-gg:x-gm-message-state:from:to:cc:subject:date
+         :message-id:reply-to;
+        bh=eXjmGuYtXXzayPhEjyl7sC3E97S/R1O+zBI0ZUSLmSc=;
+        b=b+wB+mmVoTYqYnqyvgCI1YDxWvZe8wXNJxECd9pw0e3sRiRlNV7suGeIHf8IalNGjI
+         6HjT77K+pulDX3qYgS56JLhR1d3nI4xQ+e0oXhi/MrxMe/K3F8EEmzhHh/WdFL/qzIQp
+         iqAzpLjJcoxb+opiwEp5iuUkSSKY8AanKHG1MuTr6AyDLkpRHs2tthiYoS3loKeiXHko
+         231IedH26kpJZ3QeR3NiViqPp7RA5Cw772+rgtTSWD5DAO/ReoOIOIZWB49t7HquF2aK
+         t6gkQ9i0I1BwrufC83mrEhJg8E5XbrUPzMWNRtxYUE9hsUbsR8xPoLo6X/5PG+ePJL8t
+         U2NA==
+X-Gm-Message-State: AOJu0Yz10yTXEpG+Li81ASQdqZwrOtyOJF+LrduK78CAP6ablesTaGxF
+	AvYbQCb1M4V8UMwSTZK3shapBhwJfVeQxJVBm6IUvInD2+UgEm+mUEOdghSH/wg/
+X-Gm-Gg: AZuq6aKWfuN1n16yv4bk5C9/uX2Yvf84SPCUf9Wo1Zsa280BMOQQ+7DFZhtB1SWqcTi
+	HaH3IuE+7MdIPjgxP8nY7KhRlJEarMvfqzpTn5z+uAYCbFl+bISA07SeA83T+yq/cKaXnFi9pL5
+	nnYgc91ylICTSO+aFHA4YisdRffOEQGV1u0hLM2uOG3Aal+AGgn/KEVd3j3QznwbG5Xs7FfMo0J
+	OVcHIamz6B/qmDMi4AAKB74k4gSJtGz94fi2hKExlOvPvYJZWI2wbKYW37D+cNpddZkiWTuUt3z
+	K9+nOKioxTRJf+KK3JnR7Ueza/jSlmMggpZL/DKxTsCwnNWbtBwhBnMulTuZ44qlAaaAEmQdHpY
+	LWMj8o7G6iCzzrBg1C/qNMm/yg5ujLRYKyyFc1RyCR11pkUPobikvKYIBJo5Vfn5ww+3hqsgzKA
+	6pC+qJNk1KuKJsFH4=
+X-Received: by 2002:a5d:5f90:0:b0:42f:bc61:d1bd with SMTP id ffacd0b85a97d-4358ff62652mr9616330f8f.45.1769006162208;
+        Wed, 21 Jan 2026 06:36:02 -0800 (PST)
+Received: from gl-laptop.flowwow.loc ([2a0c:9a40:8950:c800::67d])
+        by smtp.gmail.com with ESMTPSA id ffacd0b85a97d-435924ae723sm10372782f8f.41.2026.01.21.06.36.00
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Wed, 21 Jan 2026 06:36:01 -0800 (PST)
+From: Alexey Zagorodnikov <xglooom@gmail.com>
+To: platform-driver-x86@vger.kernel.org
+Cc: mario.limonciello@amd.com,
+	Alexey Zagorodnikov <xglooom@gmail.com>,
+	Shyam Sundar S K <Shyam-sundar.S-k@amd.com>,
+	Hans de Goede <hansg@kernel.org>,
+	=?UTF-8?q?Ilpo=20J=C3=A4rvinen?= <ilpo.jarvinen@linux.intel.com>,
+	linux-kernel@vger.kernel.org
+Subject: [PATCH 1/1] platform/x86/amd/pmf: Added a module parameter to disable the Smart PC function
+Date: Wed, 21 Jan 2026 19:35:19 +0500
+Message-ID: <20260121143519.12318-1-xglooom@gmail.com>
+X-Mailer: git-send-email 2.52.0
+Precedence: bulk
+X-Mailing-List: platform-driver-x86@vger.kernel.org
+List-Id: <platform-driver-x86.vger.kernel.org>
+List-Subscribe: <mailto:platform-driver-x86+subscribe@vger.kernel.org>
+List-Unsubscribe: <mailto:platform-driver-x86+unsubscribe@vger.kernel.org>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+Addresses a low power limits issue on HP ZBook Ultra G1a [1]
+
+If vendor firmware capped APU power limits with 3rd-party AC adapters,
+the user can disable the Smart PC function via the module parameter
+
+Link: https://gitlab.freedesktop.org/drm/amd/-/issues/4868 [1]
+Signed-off-by: Alexey Zagorodnikov <xglooom@gmail.com>
+---
+ drivers/platform/x86/amd/pmf/core.c | 18 +++++++++++++-----
+ 1 file changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/platform/x86/amd/pmf/core.c b/drivers/platform/x86/amd/pmf/core.c
+index 8fc293c9c5380..ee7b3adc63a02 100644
+--- a/drivers/platform/x86/amd/pmf/core.c
++++ b/drivers/platform/x86/amd/pmf/core.c
+@@ -53,6 +53,10 @@ static bool force_load;
+ module_param(force_load, bool, 0444);
+ MODULE_PARM_DESC(force_load, "Force load this driver on supported older platforms (experimental)");
+ 
++static bool smart_pc_support = true;
++module_param(smart_pc_support, bool, 0444);
++MODULE_PARM_DESC(smart_pc_support, "Smart PC Support (default = true)");
++
+ static int amd_pmf_pwr_src_notify_call(struct notifier_block *nb, unsigned long event, void *data)
+ {
+ 	struct amd_pmf_dev *pmf = container_of(nb, struct amd_pmf_dev, pwr_src_notifier);
+@@ -362,11 +366,15 @@ static void amd_pmf_init_features(struct amd_pmf_dev *dev)
+ 		dev_dbg(dev->dev, "SPS enabled and Platform Profiles registered\n");
+ 	}
+ 
+-	amd_pmf_init_smart_pc(dev);
+-	if (dev->smart_pc_enabled) {
+-		dev_dbg(dev->dev, "Smart PC Solution Enabled\n");
+-		/* If Smart PC is enabled, no need to check for other features */
+-		return;
++	if (smart_pc_support) {
++		amd_pmf_init_smart_pc(dev);
++		if (dev->smart_pc_enabled) {
++			dev_dbg(dev->dev, "Smart PC Solution Enabled\n");
++			/* If Smart PC is enabled, no need to check for other features */
++			return;
++		}
++	} else {
++		dev->smart_pc_enabled = false;
+ 	}
+ 
+ 	if (is_apmf_func_supported(dev, APMF_FUNC_AUTO_MODE)) {
+-- 
+2.52.0
+
+

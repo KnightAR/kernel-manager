@@ -1,0 +1,67 @@
+From ab35526cbdfec0de8c4cbe6ae6dc60ae1893405a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Thomas=20Wei=C3=9Fschuh?= <linux@weissschuh.net>
+Date: Sat, 30 May 2026 12:23:25 +0200
+Subject: [PATCH 9/9] x86/tools: Only use unprocessed UAPI headers for vdso2c
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Currently the build of insn_sanity against musl libc fails:
+
+          HOSTCC  arch/x86/tools/insn_sanity
+        In file included from arch/x86/tools/insn_sanity.c:17:
+        In file included from ./tools/arch/x86/include/asm/insn.h:10:
+        In file included from /usr/include/asm/byteorder.h:5:
+        In file included from ./include/uapi/linux/byteorder/little_endian.h:14:
+        ./include/uapi/linux/swab.h:48:15: error: unknown type name
+        '__attribute_const__'
+        ./include/uapi/linux/swab.h:48:15: error: unknown type name
+        '__attribute_const__'
+           48 | static inline __attribute_const__ __u16 __fswab16(__u16 val)
+              |               ^
+        ./include/uapi/linux/swab.h:48:8: error: 'inline' can only appear on functions
+           48 | static inline __attribute_const__ __u16 __fswab16(__u16 val)
+              |        ^
+        ...
+
+__attribute_const__ is an internal kernel symbol and is stripped from
+the UAPI headers during installation (see scripts/headers_install.sh).
+The error does not happen on glibc as by chance that provides its own,
+compatible definition of __attribute_const__.
+The usage of the unprocess UAPI headers for insn_santity was an
+unintended side-effect of commit a76108d05ee1 ("x86/entry/vdso: Move
+vdso2c to arch/x86/tools") and is not necessary.
+
+Only use the unprocessed UAPI headers for vdso2c, like before.
+
+The usage of the unprocessed UAPI headers should be removed
+completely, but that will require a bit more changes,
+not suitable for this late in the cycle.
+
+Reported-by: Theron York <theron.york@cloudnuke.org>
+Closes: https://lore.kernel.org/lkml/399bf58e-1c91-4c3c-a3df-dae08a891b55@cloudnuke.org/
+Fixes: a76108d05ee1 ("x86/entry/vdso: Move vdso2c to arch/x86/tools")
+Cc: stable@vger.kernel.org
+Signed-off-by: Thomas Weißschuh <linux@weissschuh.net>
+URL: https://lore.kernel.org/stable/20260530-x86-tools-build-fix2-v1-1-2eb92ed1b0b7@weissschuh.net/
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ arch/x86/tools/Makefile | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/arch/x86/tools/Makefile b/arch/x86/tools/Makefile
+index 39a183fffd04..afd967bc4051 100644
+--- a/arch/x86/tools/Makefile
++++ b/arch/x86/tools/Makefile
+@@ -38,8 +38,9 @@ $(obj)/insn_decoder_test.o: $(srctree)/tools/arch/x86/lib/insn.c $(srctree)/tool
+ 
+ $(obj)/insn_sanity.o: $(srctree)/tools/arch/x86/lib/insn.c $(srctree)/tools/arch/x86/lib/inat.c $(srctree)/tools/arch/x86/include/asm/inat_types.h $(srctree)/tools/arch/x86/include/asm/inat.h $(srctree)/tools/arch/x86/include/asm/insn.h $(objtree)/arch/x86/lib/inat-tables.c
+ 
+-HOST_EXTRACFLAGS += -I$(srctree)/tools/include -I$(srctree)/include/uapi \
+-		    -I$(srctree)/arch/$(SUBARCH)/include/uapi
++HOST_EXTRACFLAGS += -I$(srctree)/tools/include
++
++HOSTCFLAGS_vdso2c.o := -I$(srctree)/include/uapi -I$(srctree)/arch/$(SUBARCH)/include/uapi
+ 
+ hostprogs	+= relocs vdso2c
+ relocs-objs	:= relocs_32.o relocs_64.o relocs_common.o

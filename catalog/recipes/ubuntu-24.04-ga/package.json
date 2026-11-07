@@ -1,0 +1,22 @@
+{
+  "Package": "linux-headers-6.8.0-139-generic",
+  "Source": "linux",
+  "Priority": "optional",
+  "Section": "devel",
+  "Installed-Size": "28739",
+  "Maintainer": "Ubuntu Kernel Team <kernel-team@lists.ubuntu.com>",
+  "Architecture": "amd64",
+  "Version": "6.8.0-139.139",
+  "Provides": "linux-headers, linux-headers-3.0",
+  "Depends": "linux-headers-6.8.0-139, libc6 (>= 2.38), libelf1t64 (>= 0.144), libgcc-s1 (>= 4.2), libssl3t64 (>= 3.0.0), zlib1g (>= 1:1.2.3.3)",
+  "Filename": "pool/main/l/linux/linux-headers-6.8.0-139-generic_6.8.0-139.139_amd64.deb",
+  "Size": "3755766",
+  "MD5sum": "802f5ec4b8a9442b865913d00e7d7d63",
+  "SHA1": "b2d1dd2f9ca204ca9642a0c38c0083cb14fd26c5",
+  "SHA256": "15bacf92d51a0ea971d9c1369c6385e8867cd4973eede8f8931fbaf99f3dd173",
+  "SHA512": "2b0d85a41626fbe62b41e524b10a542b02085682ef2bffa10eada085d08b2d775d1eb6cd3798c196a0dc8c8212abac5f636a02dbdd766c042a4901af567cfa6a",
+  "Description": "Linux kernel headers for version 6.8.0 on 64 bit x86 SMP",
+  "Description-md5": "2378ca6e47911d959a84594509cabefa",
+  "Origin": "Ubuntu",
+  "Bugs": "https://bugs.launchpad.net/ubuntu/+filebug"
+}

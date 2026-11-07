@@ -1,0 +1,29 @@
+From 1ffb6327e255f779b2c4ea57d6fc017ecd61455d Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Fri, 2 Feb 2024 23:41:56 +0200
+Subject: [PATCH] gitlab-ci: Enable SOF support for AMD Vangogh platform
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .config-fragment | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/.config-fragment b/.config-fragment
+index 2d992737959e..1f87c8a50a93 100644
+--- a/.config-fragment
++++ b/.config-fragment
+@@ -18,4 +18,10 @@ CONFIG_SND_SOC_CS35L41=y
+ CONFIG_SND_SOC_CS35L41_SPI=y
+ CONFIG_SND_SOC_NAU8821=y
+ 
++CONFIG_SND_SOC_AMD_ACP_COMMON=y
++CONFIG_SND_SOC_AMD_SOF_MACH=y
++CONFIG_SND_SOC_SOF_PCI=y
++CONFIG_SND_SOC_SOF_AMD_TOPLEVEL=y
++CONFIG_SND_SOC_SOF_AMD_VANGOGH=y
++
+ CONFIG_LTRF216A=y
+-- 
+2.55.0
+

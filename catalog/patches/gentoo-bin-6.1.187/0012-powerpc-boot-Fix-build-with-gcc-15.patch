@@ -1,0 +1,37 @@
+From 3227fd02b76e49bcc7cf83113fd8c46506ed993e Mon Sep 17 00:00:00 2001
+From: Michal Suchanek <msuchanek@suse.de>
+Date: Mon, 31 Mar 2025 12:57:19 +0200
+Subject: [PATCH 12/16] powerpc/boot: Fix build with gcc 15
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Similar to x86 the ppc boot code does not build with GCC 15.
+
+Copy the fix from
+commit ee2ab467bddf ("x86/boot: Use '-std=gnu11' to fix build with GCC 15")
+
+Signed-off-by: Michal Suchanek <msuchanek@suse.de>
+Tested-by: Amit Machhiwal <amachhiw@linux.ibm.com>
+Tested-by: Venkat Rao Bagalkote <venkat88@linux.ibm.com>
+Signed-off-by: Madhavan Srinivasan <maddy@linux.ibm.com>
+Link: https://patch.msgid.link/20250331105722.19709-1-msuchanek@suse.de
+
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ arch/powerpc/boot/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/powerpc/boot/Makefile b/arch/powerpc/boot/Makefile
+index b13324b1a169..0c74e410178f 100644
+--- a/arch/powerpc/boot/Makefile
++++ b/arch/powerpc/boot/Makefile
+@@ -36,7 +36,7 @@ BOOTCFLAGS    := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
+ 		 -fno-strict-aliasing -O2 -msoft-float -mno-altivec -mno-vsx \
+ 		 $(call cc-option,-mno-spe) $(call cc-option,-mspe=no) \
+ 		 -pipe -fomit-frame-pointer -fno-builtin -fPIC -nostdinc \
+-		 $(LINUXINCLUDE)
++		 $(LINUXINCLUDE) -std=gnu11
+ 
+ ifdef CONFIG_PPC64_BOOT_WRAPPER
+ BOOTCFLAGS	+= -m64

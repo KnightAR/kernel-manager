@@ -1,0 +1,61 @@
+From a1b85807c1be52d55728e05b529aa380ee98eb6f Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Fri, 17 Jul 2026 14:57:33 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Fix Wi-Fi role info H2C
+ command header issue
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The function to filled up H2C command data is the last step in the driver,
+the next step is going to firmware. So the structure version number should
+not included driver local branch number (like firmware is v5, but driver
+branch to v105), it should be assigned as a explicit version number which
+paired with firmware.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260717065739.64124-8-pkshih@realtek.com
+(cherry picked from commit 35b569b60aa0d339dd14473f19c215c67911ffce)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/fw.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.c b/drivers/net/wireless/realtek/rtw89/fw.c
+index c2ff26dfcb1e..aee0f6cdaa9c 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.c
++++ b/drivers/net/wireless/realtek/rtw89/fw.c
+@@ -6258,6 +6258,10 @@ int rtw89_fw_h2c_cxdrv_role_v7(struct rtw89_dev *rtwdev, u8 type)
+ 	skb_put(skb, len);
+ 	h2c = (struct rtw89_h2c_cxrole_v7 *)skb->data;
+ 
++	h2c->hdr.type = type;
++	h2c->hdr.ver = 7;
++	h2c->hdr.len = len - H2C_LEN_CXDRVHDR_V7;
++
+ 	h2c->r.connect_cnt = r->connect_cnt;
+ 	h2c->r.link_mode = r->link_mode;
+ 	h2c->r.link_mode_chg = r->link_mode_chg;
+@@ -6326,7 +6330,7 @@ int rtw89_fw_h2c_cxdrv_role_v8(struct rtw89_dev *rtwdev, u8 type)
+ 	h2c = (struct rtw89_h2c_cxrole_v8 *)skb->data;
+ 
+ 	h2c->hdr.type = type;
+-	h2c->hdr.ver = rtwdev->btc.ver->fwlrole;
++	h2c->hdr.ver = 8;
+ 	h2c->hdr.len = len - H2C_LEN_CXDRVHDR_V7;
+ 	h2c->r.connect_cnt = r->connect_cnt;
+ 	h2c->r.link_mode = r->link_mode;
+@@ -6400,7 +6404,7 @@ int rtw89_fw_h2c_cxdrv_role_v10(struct rtw89_dev *rtwdev, u8 type)
+ 	h2c = (struct rtw89_h2c_cxrole_v10 *)skb->data;
+ 
+ 	h2c->hdr.type = type;
+-	h2c->hdr.ver = rtwdev->btc.ver->fwlrole;
++	h2c->hdr.ver = 10;
+ 	h2c->hdr.len = len - H2C_LEN_CXDRVHDR_V7;
+ 
+ 	for (j = RTW89_MAC_0; j <= RTW89_MAC_1; j++) {
+-- 
+2.55.0
+

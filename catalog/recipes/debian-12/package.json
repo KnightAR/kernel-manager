@@ -1,0 +1,18 @@
+{
+  "Package": "linux-headers-6.1.0-50-amd64",
+  "Source": "linux",
+  "Version": "6.1.176-1",
+  "Installed-Size": "3996",
+  "Maintainer": "Debian Kernel Team <debian-kernel@lists.debian.org>",
+  "Architecture": "amd64",
+  "Depends": "linux-headers-6.1.0-50-common (= 6.1.176-1), linux-kbuild-6.1 (>= 6.1.176-1), linux-compiler-gcc-12-x86",
+  "Description": "Header files for Linux 6.1.0-50-amd64",
+  "Homepage": "https://www.kernel.org/",
+  "Description-md5": "af100dfeec6cf7aee55c4b86fad93293",
+  "Section": "kernel",
+  "Priority": "optional",
+  "Filename": "pool/main/l/linux/linux-headers-6.1.0-50-amd64_6.1.176-1_amd64.deb",
+  "Size": "1688232",
+  "MD5sum": "06067dea0edd8bfd75e9c8192b34a048",
+  "SHA256": "91a7929ce639f4199e9ff7f929236cdfdcb5511dba613af5094369e95ca241da"
+}

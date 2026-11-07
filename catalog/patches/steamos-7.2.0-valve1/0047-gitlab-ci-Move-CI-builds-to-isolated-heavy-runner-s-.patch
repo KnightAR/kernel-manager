@@ -1,0 +1,30 @@
+From c4223a8785a6fa4c7e7c3be31a838283cbf7353a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Vivek=20Das=C2=A0Mohapatra?= <vivek@collabora.co.uk>
+Date: Sun, 28 Apr 2024 13:30:57 +0100
+Subject: [PATCH] gitlab-ci: Move CI builds to isolated / heavy runner(s)
+
+Moves CI onto the new "heavy" runner, which should speed things up.
+
+(cherry picked from commit 23bf76c0bcd344204e96995945144a83932c763c)
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 067d3cfc314f..903b66cfa7d9 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -13,6 +13,8 @@ default:
+   interruptible: true
+   tags:
+     - autoscaled
++    - isolated
++    - linux-heavy
+ 
+ workflow:
+   rules:
+-- 
+2.55.0
+

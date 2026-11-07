@@ -1,0 +1,56 @@
+From 9d09b1a978287f49811b8410eac2e70bdc6e9dd8 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Wed, 26 Oct 2022 18:15:20 +0300
+Subject: [PATCH] gitlab-ci: Unset CONFIG_DEBUG_INFO_BTF in kernel config
+
+This is currently causing an error as the pahole utility available in
+the build environment is too old:
+
+  LD      vmlinux.o
+  MODPOST vmlinux.symvers
+  MODINFO modules.builtin.modinfo
+  GEN     modules.builtin
+  CC      .vmlinux.export.o
+BTF: .tmp_vmlinux.btf: pahole version v1.12 is too old, need at least v1.16
+Failed to generate BTF for vmlinux
+Try to disable CONFIG_DEBUG_INFO_BTF
+make: *** [Makefile:1169: vmlinux] Error 1
+
+Additionally, revert the installation of dwarves package providing the
+above mentioned tool.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .config-fragment | 1 -
+ .gitlab-ci.yml   | 2 +-
+ 2 files changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/.config-fragment b/.config-fragment
+index a3f22b1f0d8a..078b665758bc 100644
+--- a/.config-fragment
++++ b/.config-fragment
+@@ -105,7 +105,6 @@ CONFIG_CRYPTO_USER_API_HASH=y
+ CONFIG_CRYPTO_USER_API_SKCIPHER=y
+ CONFIG_DCB=y
+ CONFIG_DEBUG_ATOMIC_SLEEP=y
+-CONFIG_DEBUG_INFO_BTF=y
+ CONFIG_DEBUG_INFO_DWARF4=y
+ # CONFIG_DEBUG_MISC is not set
+ # CONFIG_DEBUG_PREEMPT is not set
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 3e0ec597544b..eaee607b7c2d 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -19,7 +19,7 @@ kernel build:
+     - autoscaled
+   before_script:
+     - apt-get update -y
+-    - apt-get install -y rsync git build-essential bc kmod cpio flex libncurses5-dev bison libssl-dev libelf-dev openssh-client curl qemu-system* unzip python3 dwarves
++    - apt-get install -y rsync git build-essential bc kmod cpio flex libncurses5-dev bison libssl-dev libelf-dev openssh-client curl qemu-system* unzip python3
+   script:
+     - make x86_64_defconfig && make kvm_guest.config
+     - ./scripts/kconfig/merge_config.sh .config .config-fragment
+-- 
+2.55.0
+

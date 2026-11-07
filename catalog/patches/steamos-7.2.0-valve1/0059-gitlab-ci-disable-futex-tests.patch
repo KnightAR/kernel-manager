@@ -1,0 +1,36 @@
+From 471211edf0943e2d6e7f9b193ece4a01c0b0dcdf Mon Sep 17 00:00:00 2001
+From: Robert Beckett <bob.beckett@collabora.com>
+Date: Wed, 29 Jul 2026 20:23:24 +0100
+Subject: [PATCH] gitlab-ci: disable futex tests
+
+futex test file_backend from tools/testing/selftests/futex/functional/futex_wait.c
+fails when run in qemu. Until we fix it, stop breaking CI builds.
+note: it tests fine on real hw.
+
+Signed-off-by: Robert Beckett <bob.beckett@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ ci/kernel_test.sh | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/ci/kernel_test.sh b/ci/kernel_test.sh
+index ad2135e101b4..1e738ce48253 100644
+--- a/ci/kernel_test.sh
++++ b/ci/kernel_test.sh
+@@ -19,9 +19,10 @@ start_test() {
+         return
+     }
+ 
+-    echo -e "\t\t\t\t Starting futex Tests"
+-    make -C tools/testing/selftests TARGETS=futex run_tests
+-    echo -e "\t\t\t\t Completed futex Tests"
++    echo -e "\t\t\t\t WARNING: futex tests disabled"
++#    echo -e "\t\t\t\t Starting futex Tests"
++#    make -C tools/testing/selftests TARGETS=futex run_tests
++#    echo -e "\t\t\t\t Completed futex Tests"
+ 
+     echo -e "\t\t\t\t Starting syscall_user_dispatch Tests"
+     cd /mnt/tools/testing/selftests/syscall_user_dispatch || {
+-- 
+2.55.0
+

@@ -1,0 +1,99 @@
+From c97c60435af19a94e3571973bd450a00d01fd99b Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Tue, 7 Jul 2026 17:10:52 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: 8922d: update scaling factor for
+ RX path
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Update the per-MCS calibration values of RX scaling factors on RX path
+(1R or 2R) for BCC and LDPC coding schemes.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260707091056.42771-12-pkshih@realtek.com
+(cherry picked from commit 79afed9426ce4cc1bf6807dfadda081124ca2c4a)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/reg.h      |  5 ++++
+ drivers/net/wireless/realtek/rtw89/rtw8922d.c | 26 +++++++++++--------
+ 2 files changed, 20 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/reg.h b/drivers/net/wireless/realtek/rtw89/reg.h
+index 72f7b80fe1fb..2caefb929199 100644
+--- a/drivers/net/wireless/realtek/rtw89/reg.h
++++ b/drivers/net/wireless/realtek/rtw89/reg.h
+@@ -11002,6 +11002,11 @@
+ #define R_RX_LDPC02_BE4 0x26834
+ #define B_RX_LDPC10_BE4 GENMASK(17, 12)
+ #define B_RX_LDPC11_BE4 GENMASK(23, 18)
++#define B_RX_LDPC12_BE4 GENMASK(29, 24)
++#define R_RX_LDPC03_BE4 0x26838
++#define B_RX_LDPC13_BE4 GENMASK(5, 0)
++#define B_RX_LDPC02_BE4 GENMASK(23, 18)
++#define B_RX_LDPC03_BE4 GENMASK(29, 24)
+ #define R_RX_LDPC00_BE4 0x2683C
+ #define B_RX_LDPC04_BE4 GENMASK(5, 0)
+ #define B_RX_LDPC05_BE4 GENMASK(11, 6)
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922d.c b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+index 8ca07aeb377a..768434db14c6 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922d.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+@@ -2230,38 +2230,42 @@ static int rtw8922d_ctrl_rx_path_tmac(struct rtw89_dev *rtwdev,
+ 		rtw89_phy_write32_idx(rtwdev, R_RXCH_BCC1_BE4, B_RXCH_MCS6_BE4, 3, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RXCH_BCC1_BE4, B_RXCH_MCS7_BE4, 7, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RXCH_BCC1_BE4, B_RXCH_MCS8_BE4, 2, phy_idx);
+-		rtw89_phy_write32_idx(rtwdev, R_RXCH_BCC1_BE4, B_RXCH_MCS9_BE4, 2, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_AWGN00_BE4, B_RX_AWGN04_BE4, 4, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_AWGN00_BE4, B_RX_AWGN07_BE4, 2, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_AWGN01_BE4, B_RX_AWGN09_BE4, 0, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_AWGN02_BE4, B_RX_AWGN11_BE4, 1, phy_idx);
+-		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC04_BE4, 8, phy_idx);
+-		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC05_BE4, 5, phy_idx);
+-		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC06_BE4, 3, phy_idx);
+-		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC07_BE4, 5, phy_idx);
+-		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC08_BE4, 1, phy_idx);
+-		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC01_BE4, B_RX_LDPC09_BE4, 2, phy_idx);
+-		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC02_BE4, B_RX_LDPC10_BE4, 4, phy_idx);
+-		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC02_BE4, B_RX_LDPC11_BE4, 2, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC03_BE4, B_RX_LDPC02_BE4, 0x6, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC03_BE4, B_RX_LDPC03_BE4, 0xf, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC04_BE4, 0x10, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC05_BE4, 0xa, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC06_BE4, 0x8, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC07_BE4, 0x14, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC01_BE4, B_RX_LDPC09_BE4, 0x14, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC02_BE4, B_RX_LDPC10_BE4, 0xc, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC02_BE4, B_RX_LDPC11_BE4, 0xb, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC02_BE4, B_RX_LDPC12_BE4, 0x14, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC03_BE4, B_RX_LDPC13_BE4, 0x2d, phy_idx);
+ 	} else {
+ 		rtw89_phy_write32_idx(rtwdev, R_RXCH_BCC0_BE4, B_RXCH_MCS4_BE4, 13, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RXCH_BCC1_BE4, B_RXCH_MCS5_BE4, 15, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RXCH_BCC1_BE4, B_RXCH_MCS6_BE4, 6, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RXCH_BCC1_BE4, B_RXCH_MCS7_BE4, 15, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RXCH_BCC1_BE4, B_RXCH_MCS8_BE4, 4, phy_idx);
+-		rtw89_phy_write32_idx(rtwdev, R_RXCH_BCC1_BE4, B_RXCH_MCS9_BE4, 15, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_AWGN00_BE4, B_RX_AWGN04_BE4, 9, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_AWGN00_BE4, B_RX_AWGN07_BE4, 3, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_AWGN01_BE4, B_RX_AWGN09_BE4, 1, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_AWGN02_BE4, B_RX_AWGN11_BE4, 0, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC03_BE4, B_RX_LDPC02_BE4, 0x3, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC03_BE4, B_RX_LDPC03_BE4, 0x9, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC04_BE4, 9, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC05_BE4, 8, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC06_BE4, 6, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC07_BE4, 16, phy_idx);
+-		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC00_BE4, B_RX_LDPC08_BE4, 4, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC01_BE4, B_RX_LDPC09_BE4, 9, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC02_BE4, B_RX_LDPC10_BE4, 9, phy_idx);
+ 		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC02_BE4, B_RX_LDPC11_BE4, 7, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC02_BE4, B_RX_LDPC12_BE4, 0x17, phy_idx);
++		rtw89_phy_write32_idx(rtwdev, R_RX_LDPC03_BE4, B_RX_LDPC13_BE4, 0x1a, phy_idx);
+ 	}
+ 
+ 	return 0;
+-- 
+2.55.0
+

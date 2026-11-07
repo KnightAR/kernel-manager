@@ -1,0 +1,84 @@
+From 5b739c978f2d5b076c22dbb3525b3f7aed66c834 Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Sun, 12 Jul 2026 11:45:00 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: mac: abstract register
+ definition of firmware boot debug
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The registers of firmware boot debug are different between WiFi 6 and 7
+chips. Add field to abstract it accordingly.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260712034506.53209-3-pkshih@realtek.com
+(cherry picked from commit 07c26ead36e7dc9a598b815ed750d35440c440fa)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/fw.c     | 5 +++--
+ drivers/net/wireless/realtek/rtw89/mac.c    | 1 +
+ drivers/net/wireless/realtek/rtw89/mac.h    | 1 +
+ drivers/net/wireless/realtek/rtw89/mac_be.c | 1 +
+ 4 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.c b/drivers/net/wireless/realtek/rtw89/fw.c
+index 6ecacca844f6..375555d6bc53 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.c
++++ b/drivers/net/wireless/realtek/rtw89/fw.c
+@@ -1941,13 +1941,14 @@ dump:
+ 
+ static void rtw89_fw_dl_fail_dump(struct rtw89_dev *rtwdev)
+ {
++	const struct rtw89_mac_gen_def *mac = rtwdev->chip->mac_def;
+ 	u32 val32;
+ 
+ 	val32 = rtw89_read32(rtwdev, R_AX_WCPU_FW_CTRL);
+ 	rtw89_err(rtwdev, "[ERR]fwdl 0x1E0 = 0x%x\n", val32);
+ 
+-	val32 = rtw89_read32(rtwdev, R_AX_BOOT_DBG);
+-	rtw89_err(rtwdev, "[ERR]fwdl 0x83F0 = 0x%x\n", val32);
++	val32 = rtw89_read32(rtwdev, mac->boot_dbg);
++	rtw89_err(rtwdev, "[ERR]fwdl 0x%x = 0x%x\n", mac->boot_dbg, val32);
+ 
+ 	rtw89_fw_prog_cnt_dump(rtwdev);
+ }
+diff --git a/drivers/net/wireless/realtek/rtw89/mac.c b/drivers/net/wireless/realtek/rtw89/mac.c
+index b9cd7fd8d76b..3e06a0bdf7e9 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac.c
++++ b/drivers/net/wireless/realtek/rtw89/mac.c
+@@ -7445,6 +7445,7 @@ const struct rtw89_mac_gen_def rtw89_mac_gen_ax = {
+ 	.agg_len_ht = R_AX_AGG_LEN_HT_0,
+ 	.ps_status = R_AX_PPWRBIT_SETTING,
+ 	.mu_gid = &rtw89_mac_mu_gid_addr_ax,
++	.boot_dbg = R_AX_BOOT_DBG,
+ 
+ 	.muedca_ctrl = {
+ 		.addr = R_AX_MUEDCA_EN,
+diff --git a/drivers/net/wireless/realtek/rtw89/mac.h b/drivers/net/wireless/realtek/rtw89/mac.h
+index a5f1694af91a..c05f5ee0d2fd 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac.h
++++ b/drivers/net/wireless/realtek/rtw89/mac.h
+@@ -1067,6 +1067,7 @@ struct rtw89_mac_gen_def {
+ 	u32 agg_len_ht;
+ 	u32 ps_status;
+ 	const struct rtw89_mac_mu_gid_addr *mu_gid;
++	u32 boot_dbg;
+ 
+ 	struct rtw89_reg_def muedca_ctrl;
+ 	struct rtw89_reg_def bfee_ctrl;
+diff --git a/drivers/net/wireless/realtek/rtw89/mac_be.c b/drivers/net/wireless/realtek/rtw89/mac_be.c
+index 33513b283d84..8de0fe5a3b1d 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac_be.c
++++ b/drivers/net/wireless/realtek/rtw89/mac_be.c
+@@ -3284,6 +3284,7 @@ const struct rtw89_mac_gen_def rtw89_mac_gen_be = {
+ 	.agg_len_ht = R_BE_AGG_LEN_HT_0,
+ 	.ps_status = R_BE_WMTX_POWER_BE_BIT_CTL,
+ 	.mu_gid = &rtw89_mac_mu_gid_addr_be,
++	.boot_dbg = R_BE_BOOT_DBG,
+ 
+ 	.muedca_ctrl = {
+ 		.addr = R_BE_MUEDCA_EN,
+-- 
+2.55.0
+

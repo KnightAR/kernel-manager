@@ -1,0 +1,189 @@
+From 1ff48af96f747831c30eacb9c1565dab8a056108 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <natalie.vock@gmx.de>
+Date: Sat, 20 Jun 2026 12:44:34 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/amdgpu: Add a GEM op to set eviction
+ priority
+
+For userspace to better communicate what's important and what isn't.
+TODO: flesh out description a bit more
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c     | 19 +++++++++++++++
+ drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c    | 24 +++++++++++++++++++
+ drivers/gpu/drm/amd/amdgpu/amdgpu_object.h |  7 ++++++
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c     | 27 +++++++++++++++++++---
+ include/uapi/drm/amdgpu_drm.h              |  1 +
+ 5 files changed, 75 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c
+index 54105afd8b53..6fe164782c5a 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c
+@@ -824,12 +824,31 @@ static int amdgpu_cs_bo_validate(void *param, struct amdgpu_bo *bo)
+ 		.no_wait_gpu = false,
+ 		.exec = &p->exec,
+ 	};
++	struct amdgpu_fpriv *fpriv = p->filp->driver_priv;
++	struct amdgpu_bo_va *bo_va;
++	bool in_allowed_domains;
+ 	uint32_t domain;
+ 	int r;
+ 
+ 	if (bo->tbo.pin_count)
+ 		return 0;
+ 
++	in_allowed_domains =
++		bo->tbo.resource &&
++		amdgpu_mem_type_to_domain(bo->tbo.resource->mem_type) &
++			bo->allowed_domains;
++
++	if (amdgpu_vm_is_bo_always_valid(&fpriv->vm, bo) &&
++	    bo->tbo.type != ttm_bo_type_kernel) {
++		ctx.allow_bulk_evict = true;
++		bo_va = amdgpu_vm_bo_find(&fpriv->vm, bo);
++		if (bo_va->priority == 0 && in_allowed_domains) {
++			drm_dbg(adev_to_drm(p->adev),
++				"priority 0, skipping validation\n");
++			return 0;
++		}
++	}
++
+ 	/* Don't move this buffer if we have depleted our allowance
+ 	 * to move it. Don't move anything if the threshold is zero.
+ 	 */
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
+index d9de309a4a68..92ffd58e7881 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
+@@ -1161,6 +1161,30 @@ int amdgpu_gem_op_ioctl(struct drm_device *dev, void *data,
+ 		kvfree(vm_entries);
+ 		break;
+ 	}
++	case AMDGPU_GEM_OP_SET_PRIORITY: {
++		if (!amdgpu_vm_is_bo_always_valid(&fpriv->vm, robj) ||
++		    args->value > U32_MAX) {
++			drm_exec_fini(&exec);
++			r = -EINVAL;
++			break;
++		}
++
++		struct amdgpu_bo_va *bo_va =
++			amdgpu_vm_bo_find(&fpriv->vm, robj);
++		if (!bo_va) {
++			r = -EINVAL;
++		} else {
++			bo_va->priority = args->value;
++			ttm_bo_set_bulk_move_ordered(
++				&robj->tbo, robj->tbo.bulk_move, args->value);
++			/* Invalidate the buffer to get it reshuffled in the soft-evicted
++			 * list, if it's there.
++			 */
++			amdgpu_vm_bo_invalidate(robj, false);
++		}
++		drm_exec_fini(&exec);
++		break;
++	}
+ 	default:
+ 		drm_exec_fini(&exec);
+ 		r = -EINVAL;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_object.h b/drivers/gpu/drm/amd/amdgpu/amdgpu_object.h
+index 5d1f1c64418f..98afd1804702 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_object.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_object.h
+@@ -81,6 +81,13 @@ struct amdgpu_bo_va {
+ 	/* protected by bo being reserved */
+ 	unsigned			ref_count;
+ 
++	/* For VM_ALWAYS_VALID buffers - eviction priority.
++	 * Opaque value passed by userspace. May only be compared to
++	 * other priority values from VM_ALWAYS_VALID buffers of the
++	 * same VM. UINT32_MAX means unset.
++	 */
++	uint32_t			priority;
++
+ 	/* all other members protected by the VM PD being reserved */
+ 	struct dma_fence	        *last_pt_update;
+ 
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+index cb88ec23116c..387df30565b4 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+@@ -194,6 +194,26 @@ bool amdgpu_vm_is_bo_always_valid(struct amdgpu_vm *vm, struct amdgpu_bo *bo)
+ 	return bo && bo->tbo.base.resv == vm->root.bo->tbo.base.resv;
+ }
+ 
++static void amdgpu_vm_bo_insert_soft_evicted(struct amdgpu_vm_bo_status *lists,
++					     struct amdgpu_vm_bo_base *vm_bo)
++{
++	struct amdgpu_vm_bo_base *insert_point;
++
++	struct amdgpu_bo_va *bo_va =
++		container_of(vm_bo, struct amdgpu_bo_va, base);
++
++	list_for_each_entry(insert_point, &lists->soft_evicted, vm_status) {
++		struct amdgpu_bo_va *insert_va =
++			container_of(insert_point, struct amdgpu_bo_va, base);
++		if (insert_va->priority < bo_va->priority)
++			return list_move_tail(&vm_bo->vm_status,
++					      &insert_point->vm_status);
++	}
++
++	list_move_tail(&vm_bo->vm_status, &lists->soft_evicted);
++}
++
++
+ /**
+  * amdgpu_vm_bo_evicted - vm_bo is evicted
+  *
+@@ -211,7 +231,7 @@ static void amdgpu_vm_bo_evicted(struct amdgpu_vm_bo_base *vm_bo, bool soft)
+ 	lists = amdgpu_vm_bo_lock_lists(vm_bo);
+ 	vm_bo->moved = true;
+ 	if (soft)
+-		list_move_tail(&vm_bo->vm_status, &lists->soft_evicted);
++		amdgpu_vm_bo_insert_soft_evicted(lists, vm_bo);
+ 	else
+ 		list_move_tail(&vm_bo->vm_status, &lists->evicted);
+ 	amdgpu_vm_bo_unlock_lists(vm_bo);
+@@ -466,7 +486,7 @@ void amdgpu_vm_bo_base_init(struct amdgpu_device *adev,
+ 		return;
+ 	}
+ 
+-	ttm_bo_set_bulk_move(&bo->tbo, &vm->lru_bulk_move);
++	ttm_bo_set_bulk_move_ordered(&bo->tbo, &vm->lru_bulk_move, U32_MAX);
+ 
+ 	current_domain = amdgpu_mem_type_to_domain(bo->tbo.resource->mem_type);
+ 
+@@ -1813,6 +1833,7 @@ struct amdgpu_bo_va *amdgpu_vm_bo_add(struct amdgpu_device *adev,
+ 
+ 	bo_va->ref_count = 1;
+ 	bo_va->last_pt_update = dma_fence_get_stub();
++	bo_va->priority = U32_MAX;
+ 	INIT_LIST_HEAD(&bo_va->valids);
+ 	INIT_LIST_HEAD(&bo_va->invalids);
+ 
+@@ -2649,7 +2670,7 @@ int amdgpu_vm_init(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 	if (r)
+ 		return r;
+ 
+-	ttm_lru_bulk_move_init(&vm->lru_bulk_move);
++	ttm_lru_bulk_move_init(&vm->lru_bulk_move, true);
+ 
+ 	vm->is_compute_context = false;
+ 	vm->need_tlb_fence = amdgpu_userq_enabled(&adev->ddev);
+diff --git a/include/uapi/drm/amdgpu_drm.h b/include/uapi/drm/amdgpu_drm.h
+index 9f3090db2f16..a2b831d6dccc 100644
+--- a/include/uapi/drm/amdgpu_drm.h
++++ b/include/uapi/drm/amdgpu_drm.h
+@@ -806,6 +806,7 @@ union drm_amdgpu_wait_fences {
+ #define AMDGPU_GEM_OP_GET_GEM_CREATE_INFO	0
+ #define AMDGPU_GEM_OP_SET_PLACEMENT		1
+ #define AMDGPU_GEM_OP_GET_MAPPING_INFO		2
++#define AMDGPU_GEM_OP_SET_PRIORITY              3
+ 
+ struct drm_amdgpu_gem_vm_entry {
+ 	/* Start of mapping (in bytes) */
+-- 
+2.55.0
+

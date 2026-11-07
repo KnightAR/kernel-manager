@@ -1,0 +1,33 @@
+From 870aec08f61ff4becb8f0f493510fa1d30e666d4 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Thu, 13 Jun 2024 12:36:07 +0300
+Subject: [PATCH] gitlab-ci: Update debian kernel builder to trixie
+
+Debian Buster comes whith gcc 8.3 while Trixie provides 13.2, which
+matches the holo package build environment.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index f0b1cc9006c4..2d381c2fc86b 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -67,9 +67,9 @@ stages:
+ .prep-debian-kernel-builder:
+   variables:
+     IMAGE_DISTRO_BASE: debian
+-    IMAGE_DISTRO_TAG: buster-slim
++    IMAGE_DISTRO_TAG: trixie-slim
+     IMAGE_NAME: debian-kernel-builder
+-    IMAGE_TAG: "2024-02-29"
++    IMAGE_TAG: "2024-06-10"
+ 
+ check-debian-kernel-builder:
+   extends:
+-- 
+2.55.0
+

@@ -1,0 +1,182 @@
+From 88ad43e82ff2f5c06271e971ce9fad693fedd13b Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Tue, 7 Jul 2026 17:10:56 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: set needed firmware elements for
+ early chips transition
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The early chips including RTL8852A, RTL8851B, RTL8852B and RTL8852C have
+driver built-in tables, which are not preferred. New firmware is prepared
+with corresponding tables in firmware elements, so we can start to
+transition. After this patch, old firmware is still usable, but add a
+prompt text for users to update firmware.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260707091056.42771-16-pkshih@realtek.com
+(cherry picked from commit 56d32cdc6040440b08edfd5d7262250a721233f8)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/fw.c       | 10 +++++++
+ drivers/net/wireless/realtek/rtw89/fw.h       | 27 ++++++++++++++++---
+ drivers/net/wireless/realtek/rtw89/rtw8851b.c |  3 ++-
+ drivers/net/wireless/realtek/rtw89/rtw8852a.c |  3 ++-
+ drivers/net/wireless/realtek/rtw89/rtw8852b.c |  3 ++-
+ drivers/net/wireless/realtek/rtw89/rtw8852c.c |  3 ++-
+ 6 files changed, 41 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.c b/drivers/net/wireless/realtek/rtw89/fw.c
+index 0715b0d37057..4f0340884737 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.c
++++ b/drivers/net/wireless/realtek/rtw89/fw.c
+@@ -1564,6 +1564,7 @@ int rtw89_fw_recognize_elements(struct rtw89_dev *rtwdev)
+ 	u32 unrecognized_elements = chip->needed_fw_elms;
+ 	const struct rtw89_fw_element_handler *handler;
+ 	const struct rtw89_fw_element_hdr *hdr;
++	bool transition;
+ 	u32 elm_size;
+ 	u32 elem_id;
+ 	u32 offset;
+@@ -1571,6 +1572,9 @@ int rtw89_fw_recognize_elements(struct rtw89_dev *rtwdev)
+ 
+ 	BUILD_BUG_ON(sizeof(chip->needed_fw_elms) * 8 < RTW89_FW_ELEMENT_ID_NUM);
+ 
++	transition = !!((chip->needed_fw_elms & BIT(__RTW89_FW_ELEMENT_ID_INTL_TRANSITION)));
++	unrecognized_elements &= ~BIT(__RTW89_FW_ELEMENT_ID_INTL_TRANSITION);
++
+ 	offset = rtw89_mfw_get_size(rtwdev);
+ 	offset = ALIGN(offset, RTW89_FW_ELEMENT_ALIGN);
+ 	if (offset == 0)
+@@ -1610,6 +1614,12 @@ next:
+ 	}
+ 
+ 	if (unrecognized_elements) {
++		if (transition) {
++			rtw89_info(rtwdev, "NOTE: This firmware is going to be obsolete!\n"
++				   "Please download the latest firmware from https://gitlab.com/kernel-firmware/linux-firmware.git\n");
++			return 0;
++		}
++
+ 		rtw89_err(rtwdev, "Firmware elements 0x%08x are unrecognized\n",
+ 			  unrecognized_elements);
+ 		return -ENOENT;
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.h b/drivers/net/wireless/realtek/rtw89/fw.h
+index a6f3b28b9e33..af126d15a1fb 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.h
++++ b/drivers/net/wireless/realtek/rtw89/fw.h
+@@ -4354,31 +4354,50 @@ enum rtw89_fw_element_id {
+ 	RTW89_FW_ELEMENT_ID_DIAG_MAC = 28,
+ 	RTW89_FW_ELEMENT_ID_TX_COMP = 29,
+ 
++	__RTW89_FW_ELEMENT_ID_INTL_TRANSITION,
+ 	RTW89_FW_ELEMENT_ID_NUM,
+ };
+ 
++#define BITS_OF_RTW89_TXPWR_FW_ELEMENTS_TX_SHAPE \
++	(BIT(RTW89_FW_ELEMENT_ID_TX_SHAPE_LMT) | \
++	 BIT(RTW89_FW_ELEMENT_ID_TX_SHAPE_LMT_RU))
++
+ #define BITS_OF_RTW89_TXPWR_FW_ELEMENTS_NO_6GHZ \
+ 	(BIT(RTW89_FW_ELEMENT_ID_TXPWR_BYRATE) | \
+ 	 BIT(RTW89_FW_ELEMENT_ID_TXPWR_LMT_2GHZ) | \
+ 	 BIT(RTW89_FW_ELEMENT_ID_TXPWR_LMT_5GHZ) | \
+ 	 BIT(RTW89_FW_ELEMENT_ID_TXPWR_LMT_RU_2GHZ) | \
+ 	 BIT(RTW89_FW_ELEMENT_ID_TXPWR_LMT_RU_5GHZ) | \
+-	 BIT(RTW89_FW_ELEMENT_ID_TX_SHAPE_LMT) | \
+-	 BIT(RTW89_FW_ELEMENT_ID_TX_SHAPE_LMT_RU))
++	 BITS_OF_RTW89_TXPWR_FW_ELEMENTS_TX_SHAPE)
+ 
+ #define BITS_OF_RTW89_TXPWR_FW_ELEMENTS \
+ 	(BITS_OF_RTW89_TXPWR_FW_ELEMENTS_NO_6GHZ | \
+ 	 BIT(RTW89_FW_ELEMENT_ID_TXPWR_LMT_6GHZ) | \
+ 	 BIT(RTW89_FW_ELEMENT_ID_TXPWR_LMT_RU_6GHZ))
+ 
+-#define RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_NO_6GHZ \
++#define RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_BASE \
+ 	(BIT(RTW89_FW_ELEMENT_ID_BB_REG) | \
+ 	 BIT(RTW89_FW_ELEMENT_ID_RADIO_A) | \
+ 	 BIT(RTW89_FW_ELEMENT_ID_RADIO_B) | \
+ 	 BIT(RTW89_FW_ELEMENT_ID_RF_NCTL) | \
+-	 BIT(RTW89_FW_ELEMENT_ID_TXPWR_TRK) | \
++	 BIT(RTW89_FW_ELEMENT_ID_TXPWR_TRK))
++
++#define RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_NO_6GHZ \
++	(RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_BASE | \
+ 	 BITS_OF_RTW89_TXPWR_FW_ELEMENTS_NO_6GHZ)
+ 
++#define RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS \
++	(RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_BASE | \
++	 BITS_OF_RTW89_TXPWR_FW_ELEMENTS)
++
++#define RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_RTL8852A \
++	(RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_NO_6GHZ & \
++	 ~BITS_OF_RTW89_TXPWR_FW_ELEMENTS_TX_SHAPE)
++
++#define RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_RTL8851B \
++	(RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_NO_6GHZ & \
++	 ~BIT(RTW89_FW_ELEMENT_ID_RADIO_B))
++
+ #define RTW89_BE_GEN_DEF_NEEDED_FW_ELEMENTS_BASE \
+ 	(BIT(RTW89_FW_ELEMENT_ID_BB_REG) | \
+ 	 BIT(RTW89_FW_ELEMENT_ID_RADIO_A) | \
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8851b.c b/drivers/net/wireless/realtek/rtw89/rtw8851b.c
+index 95437ba9b675..50480f72c96d 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8851b.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8851b.c
+@@ -2635,7 +2635,8 @@ const struct rtw89_chip_info rtw8851b_chip_info = {
+ 	},
+ 	.try_ce_fw		= true,
+ 	.bbmcu_nr		= 0,
+-	.needed_fw_elms		= 0,
++	.needed_fw_elms		= RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_RTL8851B |
++				  BIT(__RTW89_FW_ELEMENT_ID_INTL_TRANSITION),
+ 	.fw_blacklist		= NULL,
+ 	.fifo_size		= 196608,
+ 	.small_fifo_size	= true,
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852a.c b/drivers/net/wireless/realtek/rtw89/rtw8852a.c
+index 78e07276fb2e..0c7794742650 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852a.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852a.c
+@@ -2373,7 +2373,8 @@ const struct rtw89_chip_info rtw8852a_chip_info = {
+ 	},
+ 	.try_ce_fw		= false,
+ 	.bbmcu_nr		= 0,
+-	.needed_fw_elms		= 0,
++	.needed_fw_elms		= RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_RTL8852A |
++				  BIT(__RTW89_FW_ELEMENT_ID_INTL_TRANSITION),
+ 	.fw_blacklist		= NULL,
+ 	.fifo_size		= 458752,
+ 	.small_fifo_size	= false,
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852b.c b/drivers/net/wireless/realtek/rtw89/rtw8852b.c
+index a8638024b54a..5904127cc836 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852b.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852b.c
+@@ -968,7 +968,8 @@ const struct rtw89_chip_info rtw8852b_chip_info = {
+ 	},
+ 	.try_ce_fw		= true,
+ 	.bbmcu_nr		= 0,
+-	.needed_fw_elms		= 0,
++	.needed_fw_elms		= RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS_NO_6GHZ |
++				  BIT(__RTW89_FW_ELEMENT_ID_INTL_TRANSITION),
+ 	.fw_blacklist		= &rtw89_fw_blacklist_default,
+ 	.fifo_size		= 196608,
+ 	.small_fifo_size	= true,
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852c.c b/drivers/net/wireless/realtek/rtw89/rtw8852c.c
+index a82373198356..968666280c89 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852c.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852c.c
+@@ -3172,7 +3172,8 @@ const struct rtw89_chip_info rtw8852c_chip_info = {
+ 	},
+ 	.try_ce_fw		= false,
+ 	.bbmcu_nr		= 0,
+-	.needed_fw_elms		= 0,
++	.needed_fw_elms		= RTW89_AX_GEN_DEF_NEEDED_FW_ELEMENTS |
++				  BIT(__RTW89_FW_ELEMENT_ID_INTL_TRANSITION),
+ 	.fw_blacklist		= &rtw89_fw_blacklist_default,
+ 	.fifo_size		= 458752,
+ 	.small_fifo_size	= false,
+-- 
+2.55.0
+

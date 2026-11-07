@@ -1,0 +1,40 @@
+From 6ccecbe95d32db18cd1915cd6f28faff61195e51 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <natalie.vock@gmx.de>
+Date: Sat, 13 Jun 2026 16:29:37 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/amd/display: Wait for flip completion
+ before cleaning up fbs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When performing async flips, we can dispatch the flip without waiting
+for vblank, but we still need to actually wait for the flip. Otherwise
+the framebuffer objects are unpinned too early and things to way south
+if we happen to be under memory pressure and try evicting the
+framebuffers.
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+index c47586801b89..0c10eafd4782 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -12003,9 +12003,7 @@ static void amdgpu_dm_atomic_commit_tail(struct drm_atomic_commit *state)
+ 	/* Signal HW programming completion */
+ 	drm_atomic_helper_commit_hw_done(state);
+ 
+-	if (wait_for_vblank)
+-		drm_atomic_helper_wait_for_flip_done(dev, state);
+-
++	drm_atomic_helper_wait_for_flip_done(dev, state);
+ 	drm_atomic_helper_cleanup_planes(dev, state);
+ 
+ 	/* Don't free the memory if we are hitting this as part of suspend.
+-- 
+2.55.0
+

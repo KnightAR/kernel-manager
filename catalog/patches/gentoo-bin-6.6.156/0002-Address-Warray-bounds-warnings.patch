@@ -1,0 +1,36 @@
+From 392399acb7f7b59ad7f8e6bdc7841dd1a411bb54 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Micha=C5=82=20G=C3=B3rny?= <mgorny@gentoo.org>
+Date: Fri, 4 Jul 2025 20:30:23 +0200
+Subject: [PATCH 02/25] Address -Warray-bounds warnings
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+"From" taken from genpatches, though it's unclear if that specific
+change is actually from there.
+
+From: https://github.com/KSPP/linux/issues/109
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ arch/sparc/mm/init_64.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/arch/sparc/mm/init_64.c b/arch/sparc/mm/init_64.c
+index d7db4e737218..4d83084b98e5 100644
+--- a/arch/sparc/mm/init_64.c
++++ b/arch/sparc/mm/init_64.c
+@@ -3085,11 +3085,11 @@ static inline resource_size_t compute_kern_paddr(void *addr)
+ static void __init kernel_lds_init(void)
+ {
+ 	code_resource.start = compute_kern_paddr(_text);
+-	code_resource.end   = compute_kern_paddr(_etext - 1);
++	code_resource.end   = compute_kern_paddr(_etext) - 1;
+ 	data_resource.start = compute_kern_paddr(_etext);
+-	data_resource.end   = compute_kern_paddr(_edata - 1);
++	data_resource.end   = compute_kern_paddr(_edata) - 1;
+ 	bss_resource.start  = compute_kern_paddr(__bss_start);
+-	bss_resource.end    = compute_kern_paddr(_end - 1);
++	bss_resource.end    = compute_kern_paddr(_end) - 1;
+ }
+ 
+ static int __init report_memory(void)

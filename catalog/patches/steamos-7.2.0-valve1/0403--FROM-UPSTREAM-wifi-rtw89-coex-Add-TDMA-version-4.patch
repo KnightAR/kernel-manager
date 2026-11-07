@@ -1,0 +1,57 @@
+From f651ee56d06c71da06b6fcd111374f8e024ca4b1 Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Fri, 17 Jul 2026 14:57:35 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Add TDMA version 4
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+TDMA version 4 uses new TLV-Header to package TDMA information,
+patch related entry for version 4.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260717065739.64124-10-pkshih@realtek.com
+(cherry picked from commit 42a83b5f13e3d9820113f4de752e5b8353f3f7dd)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/coex.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/coex.c b/drivers/net/wireless/realtek/rtw89/coex.c
+index 6bbcc6cd5dae..51108ce5ce31 100644
+--- a/drivers/net/wireless/realtek/rtw89/coex.c
++++ b/drivers/net/wireless/realtek/rtw89/coex.c
+@@ -1705,7 +1705,8 @@ static u32 _chk_btc_report(struct rtw89_dev *rtwdev,
+ 			pfinfo = &pfwinfo->rpt_fbtc_tdma.finfo.v1;
+ 			pcinfo->req_len = sizeof(pfwinfo->rpt_fbtc_tdma.finfo.v1);
+ 			fwsubver->fcxtdma = 0;
+-		} else if (ver->fcxtdma == 3 || ver->fcxtdma == 7) {
++		} else if (ver->fcxtdma == 3 || ver->fcxtdma == 4 ||
++			   ver->fcxtdma == 7) {
+ 			pfinfo = &pfwinfo->rpt_fbtc_tdma.finfo.v3;
+ 			pcinfo->req_len = sizeof(pfwinfo->rpt_fbtc_tdma.finfo.v3);
+ 			fwsubver->fcxtdma = pfwinfo->rpt_fbtc_tdma.finfo.v3.fver;
+@@ -2212,7 +2213,8 @@ static u32 _chk_btc_report(struct rtw89_dev *rtwdev,
+ 				     memcmp(&dm->tdma_now,
+ 					    &pfwinfo->rpt_fbtc_tdma.finfo.v1,
+ 					    sizeof(dm->tdma_now)));
+-		else if (ver->fcxtdma == 3 || ver->fcxtdma == 7)
++		else if (ver->fcxtdma == 3 || ver->fcxtdma == 4 ||
++			 ver->fcxtdma == 7)
+ 			_chk_btc_err(rtwdev, BTC_DCNT_TDMA_NONSYNC,
+ 				     memcmp(&dm->tdma_now,
+ 					    &pfwinfo->rpt_fbtc_tdma.finfo.v3.tdma,
+@@ -2559,7 +2561,7 @@ static void _append_tdma(struct rtw89_dev *rtwdev)
+ 		tlv->len = sizeof(*v);
+ 		*v = dm->tdma;
+ 		btc->policy_len += BTC_TLV_HDR_LEN + sizeof(*v);
+-	} else if (ver->fcxtdma == 7) {
++	} else if (ver->fcxtdma == 7 || ver->fcxtdma == 4) {
+ 		tlv_v7 = (struct rtw89_btc_btf_tlv_v7 *)&btc->policy[len];
+ 		tlv_v7->len = sizeof(dm->tdma);
+ 		tlv_v7->ver = ver->fcxtdma;
+-- 
+2.55.0
+

@@ -1,0 +1,44 @@
+From f67179aa017f13089febc37bff15215e3427ff69 Mon Sep 17 00:00:00 2001
+From: Scott Dalton <scottd@valvesoftware.com>
+Date: Fri, 21 Nov 2025 20:48:02 +0000
+Subject: [PATCH] [FOR-UPSTREAM] drm/amdgpu: add Chrontel OUI to freesync pcon
+ whitelist
+
+Add the OUI for Chrontel.
+I have multiple DP->HDMI devices from different manufacturers that
+report this ID and are confirmed to work.
+
+Signed-off-by: Scott Dalton <scottd@valvesoftware.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c | 1 +
+ drivers/gpu/drm/amd/display/include/ddc_service_types.h   | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c
+index 6be7f6edd0b2..1ccdfba35ad3 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c
+@@ -1574,6 +1574,7 @@ static bool dm_is_freesync_pcon_whitelist(const uint32_t branch_dev_id)
+ 	case DP_BRANCH_DEVICE_ID_90CC24:
+ 	case DP_BRANCH_DEVICE_ID_001CF8:
+ 	case DP_BRANCH_DEVICE_ID_001FF2:
++	case DP_BRANCH_DEVICE_ID_2B02F0:
+ 		ret_val = true;
+ 		break;
+ 	default:
+diff --git a/drivers/gpu/drm/amd/display/include/ddc_service_types.h b/drivers/gpu/drm/amd/display/include/ddc_service_types.h
+index 53210e3aa0e0..4164f8a5ae56 100644
+--- a/drivers/gpu/drm/amd/display/include/ddc_service_types.h
++++ b/drivers/gpu/drm/amd/display/include/ddc_service_types.h
+@@ -37,6 +37,7 @@
+ #define DP_BRANCH_DEVICE_ID_001CF8 0x001CF8
+ #define DP_BRANCH_DEVICE_ID_0060AD 0x0060AD
+ #define DP_BRANCH_DEVICE_ID_001FF2 0x001FF2
++#define DP_BRANCH_DEVICE_ID_2B02F0 0x2B02F0
+ #define DP_BRANCH_HW_REV_10 0x10
+ #define DP_BRANCH_HW_REV_20 0x20
+ 
+-- 
+2.55.0
+

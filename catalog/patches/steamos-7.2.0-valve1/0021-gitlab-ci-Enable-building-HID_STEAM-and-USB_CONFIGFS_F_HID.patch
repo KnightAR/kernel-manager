@@ -1,0 +1,41 @@
+From 4dbb682e7ae7cbb0135286fcb5d434905f418ea5 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Thu, 4 May 2023 12:29:08 +0300
+Subject: [PATCH] gitlab-ci: Enable building HID_STEAM and USB_CONFIGFS_F_HID
+
+Improve build test coverage by enabling some additional modules for
+which we are still carrying out-of-tree patches.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .config-fragment-extra | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/.config-fragment-extra b/.config-fragment-extra
+index baabc34fae4f..82a6e0191f7e 100644
+--- a/.config-fragment-extra
++++ b/.config-fragment-extra
+@@ -201,6 +201,8 @@ CONFIG_HID_BATTERY_STRENGTH=y
+ # CONFIG_HID_MONTEREY is not set
+ CONFIG_HID_MULTITOUCH=y
+ # CONFIG_HID_REDRAGON is not set
++CONFIG_HID_STEAM=y
++CONFIG_STEAM_FF=y
+ CONFIG_HIST_TRIGGERS=y
+ CONFIG_HOTPLUG_PCI_ACPI=y
+ CONFIG_HOTPLUG_PCI_CPCI=y
+@@ -547,7 +549,10 @@ CONFIG_UCLAMP_TASK=y
+ CONFIG_UCLAMP_TASK_GROUP=y
+ CONFIG_UDMABUF=y
+ CONFIG_UNICODE=y
++CONFIG_USB_CONFIGFS=y
++CONFIG_USB_CONFIGFS_F_HID=y
+ CONFIG_USB_EHCI_ROOT_HUB_TT=y
++CONFIG_USB_GADGET=y
+ CONFIG_USB_HID=y
+ CONFIG_USB_LED_TRIG=y
+ # CONFIG_USB_NET_AX88179_178A is not set
+-- 
+2.55.0
+

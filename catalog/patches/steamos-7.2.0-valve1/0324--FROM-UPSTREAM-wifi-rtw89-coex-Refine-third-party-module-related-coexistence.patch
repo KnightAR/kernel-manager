@@ -1,0 +1,189 @@
+From 5186e567fd0c2b4a8ae0e69f3abc02643d7d8b00 Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Wed, 24 Jun 2026 11:39:37 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Refine third party module
+ related coexistence
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The incoming chip reserved several IO ports to coexist with the other
+vendor's stand along chips. In order to configured them easier add the
+structure.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260624033941.45918-7-pkshih@realtek.com
+(cherry picked from commit 195ce7889423f1fc068490cfbaaed4eaa16a093f)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/coex.c     |  8 ++--
+ drivers/net/wireless/realtek/rtw89/core.h     | 31 +++++++++++---
+ drivers/net/wireless/realtek/rtw89/rtw8922a.c |  2 +-
+ drivers/net/wireless/realtek/rtw89/rtw8922d.c | 40 +++++++++++++++++++
+ 4 files changed, 71 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/coex.c b/drivers/net/wireless/realtek/rtw89/coex.c
+index 8fa51867055b..5159338960f3 100644
+--- a/drivers/net/wireless/realtek/rtw89/coex.c
++++ b/drivers/net/wireless/realtek/rtw89/coex.c
+@@ -7655,7 +7655,7 @@ void _run_coex(struct rtw89_dev *rtwdev, enum btc_reason_and_action reason)
+ 		goto exit;
+ 	}
+ 
+-	if (!cx->bt0.enable.now && !cx->other.type) {
++	if (!cx->bt0.enable.now && !cx->bt_ext.func_type) {
+ 		_action_bt_off(rtwdev);
+ 		goto exit;
+ 	}
+@@ -7776,7 +7776,7 @@ static void _set_init_info(struct rtw89_dev *rtwdev)
+ 		dm->init_info.init_v7.wl_only = (u8)dm->wl_only;
+ 		dm->init_info.init_v7.bt_only = (u8)dm->bt_only;
+ 		dm->init_info.init_v7.wl_init_ok = (u8)wl->status.map.init_ok;
+-		dm->init_info.init_v7.cx_other = btc->cx.other.type;
++		dm->init_info.init_v7.cx_other = btc->cx.bt_ext.func_type;
+ 		dm->init_info.init_v7.wl_guard_ch = chip->afh_guard_ch;
+ 		dm->init_info.init_v7.module = btc->mdinfo.md_v7;
+ 	} else {
+@@ -7784,7 +7784,7 @@ static void _set_init_info(struct rtw89_dev *rtwdev)
+ 		dm->init_info.init.bt_only = (u8)dm->bt_only;
+ 		dm->init_info.init.wl_init_ok = (u8)wl->status.map.init_ok;
+ 		dm->init_info.init.dbcc_en = rtwdev->dbcc_en;
+-		dm->init_info.init.cx_other = btc->cx.other.type;
++		dm->init_info.init.cx_other = btc->cx.bt_ext.func_type;
+ 		dm->init_info.init.wl_guard_ch = chip->afh_guard_ch;
+ 		dm->init_info.init.module = btc->mdinfo.md;
+ 	}
+@@ -8927,7 +8927,7 @@ static int _show_cx_info(struct rtw89_dev *rtwdev, char *buf, size_t bufsz)
+ 
+ 	p += scnprintf(p, end - p,
+ 		       "3rd_coex:%d, dbcc:%d, tx_num:%d, rx_num:%d\n",
+-		       btc->cx.other.type, rtwdev->dbcc_en, hal->tx_nss,
++		       btc->cx.bt_ext.func_type, rtwdev->dbcc_en, hal->tx_nss,
+ 		       hal->rx_nss);
+ 
+ 	return p - buf;
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index 4714ed9a2c89..c42d117a70e8 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -1445,6 +1445,12 @@ enum rtw89_btc_bt_state_cnt {
+ 	BTC_BCNT_NUM,
+ };
+ 
++enum rtw89_btc_bt_rf_band {
++	BTC_BT_B2G = 0x0, /* 2.4GHz */
++	BTC_BT_B5G = 0x1, /* 5GHz or 6GHz */
++	BTC_BT_BMAX = 0x2
++};
++
+ enum rtw89_btc_bt_profile {
+ 	BTC_BT_NOPROFILE = 0,
+ 	BTC_BT_HFP = BIT(0),
+@@ -1975,10 +1981,25 @@ struct rtw89_btc_bt_link_info {
+ 	u32 rsvd: 19;
+ };
+ 
+-struct rtw89_btc_3rdcx_info {
+-	u8 type;   /* 0: none, 1:zigbee, 2:LTE  */
+-	u8 hw_coex;
+-	u16 rsvd;
++struct rtw89_btc_extsoc_info {
++	u8 chip_id;
++	u8 max_tx_pwr;
++	u8 rf_band_map;
++	u8 ant_iso_to_wl;
++
++	u8 link_weight[BTC_BT_BMAX];
++
++	u8 func_type; /* 0: none, 1:zigbee, 2:LTE */
++	u8 hw_coex; /* Hard-Wire coex interface support */
++	u8 pta_type; /* 0: RTK 4-wire mode, 1: 3-wire mode */
++	u8 pta_req_exist;
++
++	u32 hpta_cfg;
++	u32 hmbx_cfg;
++	u32 swout_cfg;
++	u32 swin_cfg;
++	u32 profile_map[BTC_BT_BMAX];
++	u32 bcnt[BTC_BCNT_NUM];
+ };
+ 
+ struct rtw89_btc_dm_emap {
+@@ -2267,7 +2288,7 @@ struct rtw89_btc_cx {
+ 	struct rtw89_btc_wl_info wl;
+ 	struct rtw89_btc_bt_info bt0;
+ 	struct rtw89_btc_bt_info bt1;
+-	struct rtw89_btc_3rdcx_info other;
++	struct rtw89_btc_extsoc_info bt_ext;
+ 	u32 state_map;
+ };
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922a.c b/drivers/net/wireless/realtek/rtw89/rtw8922a.c
+index ad3618dfd57d..91897aeced28 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922a.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922a.c
+@@ -2745,7 +2745,7 @@ static void rtw8922a_btc_set_rfe(struct rtw89_dev *rtwdev)
+ 	if (module->kt_ver <= 1)
+ 		module->wa_type |= BTC_WA_HFP_ZB;
+ 
+-	rtwdev->btc.cx.other.type = BTC_3CX_NONE;
++	rtwdev->btc.cx.bt_ext.func_type = BTC_3CX_NONE;
+ 
+ 	if (module->rfe_type == 0) {
+ 		rtwdev->btc.dm.error.map.rfe_type0 = true;
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922d.c b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+index 838c26231897..888973f4ef95 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922d.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+@@ -2997,6 +2997,46 @@ static u32 rtw8922d_chan_to_rf18_val(struct rtw89_dev *rtwdev,
+ 
+ static void rtw8922d_btc_set_rfe(struct rtw89_dev *rtwdev)
+ {
++	union rtw89_btc_module_info *md = &rtwdev->btc.mdinfo;
++	struct rtw89_btc_module_v7 *module = &md->md_v7;
++
++	module->rfe_type = rtwdev->efuse.rfe_type;
++	module->kt_ver = rtwdev->hal.cv;
++	module->bt_solo = 0;
++	module->switch_type = BTC_SWITCH_INTERNAL;
++	module->wa_type = 0;
++
++	module->ant.type = BTC_ANT_SHARED;
++	module->ant.num = 2;
++	module->ant.isolation = 10;
++	module->ant.diversity = 0;
++	module->ant.single_pos = RF_PATH_A;
++	module->ant.btg_pos = RF_PATH_B;
++
++	if (module->kt_ver <= 1)
++		module->wa_type |= BTC_WA_HFP_ZB;
++
++	rtwdev->btc.cx.bt_ext.func_type = BTC_3CX_NONE;
++
++	if (module->rfe_type == 0) {
++		rtwdev->btc.dm.error.map.rfe_type0 = true;
++		return;
++	}
++
++	module->ant.num = (module->rfe_type % 2) ?  2 : 3;
++
++	if (module->kt_ver == 0)
++		module->ant.num = 2;
++
++	if (module->ant.num == 3) {
++		module->ant.type = BTC_ANT_DEDICATED;
++		module->bt_pos = BTC_BT_ALONE;
++	} else {
++		module->ant.type = BTC_ANT_SHARED;
++		module->bt_pos = BTC_BT_BTG;
++	}
++	rtwdev->btc.btg_pos = module->ant.btg_pos;
++	rtwdev->btc.ant_type = module->ant.type;
+ }
+ 
+ static void rtw8922d_btc_init_cfg(struct rtw89_dev *rtwdev)
+-- 
+2.55.0
+

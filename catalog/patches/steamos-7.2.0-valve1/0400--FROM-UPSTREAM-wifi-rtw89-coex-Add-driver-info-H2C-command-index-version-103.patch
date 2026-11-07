@@ -1,0 +1,72 @@
+From 85968606196ce7dc8d6576f617c0b85c0986bec6 Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Fri, 17 Jul 2026 14:57:32 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Add driver info H2C
+ command index version 103
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The 0.29.133.X firmware driver info H2C index maximum is 5, to prevent
+switch case fall through and send unexpected H2C commands, add version
+code 103 as judgment.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260717065739.64124-7-pkshih@realtek.com
+(cherry picked from commit 81d30a7be825f0a27cb64a5385d57aa4aab70ca3)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/coex.c | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/coex.c b/drivers/net/wireless/realtek/rtw89/coex.c
+index ad52274a3979..10699c92273a 100644
+--- a/drivers/net/wireless/realtek/rtw89/coex.c
++++ b/drivers/net/wireless/realtek/rtw89/coex.c
+@@ -3138,7 +3138,7 @@ static void _fw_set_drv_info(struct rtw89_dev *rtwdev, u8 index)
+ 		rtw89_fw_h2c_cxdrv_rfk(rtwdev, index);
+ 		break;
+ 	case CXDRVINFO_TXPWR:
+-		if (ver->drvinfo_ver == 3)
++		if (ver->drvinfo_ver == 3 || ver->drvinfo_ver == 103)
+ 			index = 4;
+ 
+ 		if (ver->fcxtrx == 7 || ver->fcxtrx == 107)
+@@ -3147,26 +3147,27 @@ static void _fw_set_drv_info(struct rtw89_dev *rtwdev, u8 index)
+ 			rtw89_fw_h2c_cxtxpwr_v9(rtwdev, index);
+ 		break;
+ 	case CXDRVINFO_FDDT:
+-		if (ver->drvinfo_ver == 3)
++		if (ver->drvinfo_ver == 3 || ver->drvinfo_ver == 103)
+ 			index = 5;
+ 		else
+ 			return;
+ 
+-		rtw89_debug(rtwdev, RTW89_DBG_BTC, "drv_info FDDT index=%d\n", index);
+ 		break;
+ 	case CXDRVINFO_MLO:
++		if (!ver->fcxmlo || ver->drvinfo_ver == 103)
++			return;
++
+ 		if (ver->drvinfo_ver == 3)
+ 			index = 6;
+ 		else
+ 			return;
+ 
+-		rtw89_debug(rtwdev, RTW89_DBG_BTC, "drv_info MLO index=%d\n", index);
+ 		break;
+ 	case CXDRVINFO_OSI:
+-		if (!ver->fcxosi)
++		if (!ver->fcxosi || ver->drvinfo_ver == 103)
+ 			return;
+ 
+-		if (ver->drvinfo_ver > 1)
++		if (ver->drvinfo_ver == 3)
+ 			index = 7;
+ 		else
+ 			return;
+-- 
+2.55.0
+

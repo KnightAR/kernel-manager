@@ -1,0 +1,81 @@
+From dd476e59f9bea803ad25d1a7793ba70ff1fd202e Mon Sep 17 00:00:00 2001
+From: Scott Dalton <scottd@valvesoftware.com>
+Date: Fri, 21 Nov 2025 20:51:49 +0000
+Subject: [PATCH] [FOR-UPSTREAM] drm/amdgpu: add module param to override
+ freesync pcon whitelist
+
+Added parameter to override whitelist allowing all adapters to
+pass and log the device id of found adapters.
+
+Signed-off-by: Scott Dalton <scottd@valvesoftware.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu.h               |  1 +
+ drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c           | 15 +++++++++++++++
+ .../drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c |  5 +++++
+ 3 files changed, 21 insertions(+)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu.h b/drivers/gpu/drm/amd/amdgpu/amdgpu.h
+index e702da3d91fe..5224bd3dc91e 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu.h
+@@ -206,6 +206,7 @@ extern uint amdgpu_smu_memory_pool_size;
+ extern int amdgpu_smu_pptable_id;
+ extern uint amdgpu_dc_feature_mask;
+ extern uint amdgpu_freesync_vid_mode;
++extern int amdgpu_freesync_pcon_allow_all;
+ extern uint amdgpu_dc_debug_mask;
+ extern uint amdgpu_dc_visual_confirm;
+ extern int amdgpu_dm_abm_level;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+index 1aed121f4ddb..7f60f5bb3d7b 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+@@ -229,6 +229,7 @@ int amdgpu_noretry = -1;
+ int amdgpu_force_asic_type = -1;
+ int amdgpu_tmz = -1; /* auto */
+ uint amdgpu_freesync_vid_mode;
++int amdgpu_freesync_pcon_allow_all;
+ int amdgpu_reset_method = -1; /* auto */
+ int amdgpu_num_kcq = -1;
+ int amdgpu_smartshift_bias;
+@@ -939,6 +940,20 @@ MODULE_PARM_DESC(
+ 	"Adds additional modes via VRR for refresh changes without a full modeset (0 = off (default), 1 = on)");
+ module_param_named(freesync_video, amdgpu_freesync_vid_mode, uint, 0444);
+ 
++/**
++ * DOC: freesync_pcon_allow_all (int)
++ * Ignore DP-HDMI adapter Freesync PCON whitelist and log the provided branch_dev_id.
++ * This will allow the adapter to report functional freesync, provided vrr capbits
++ * are met so that adapters which have not yet been added to the whitelist can be
++ * more easily identified and tested.
++ *
++ * The default value: 0 (off).
++ */
++MODULE_PARM_DESC(
++	freesync_pcon_allow_all,
++	"Allow any DP-HDMI adapter to pass freesync whitelist and log adapter id (0 = off (default), 1 = on)");
++module_param_named(freesync_pcon_allow_all, amdgpu_freesync_pcon_allow_all, int, 0444);
++
+ /**
+  * DOC: reset_method (int)
+  * GPU reset method (-1 = auto (default), 0 = legacy, 1 = mode0, 2 = mode1, 3 = mode2, 4 = baco)
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c
+index 1ccdfba35ad3..b413559acbe1 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c
+@@ -1566,6 +1566,11 @@ void dm_helpers_dp_mst_update_branch_bandwidth(
+ 
+ static bool dm_is_freesync_pcon_whitelist(const uint32_t branch_dev_id)
+ {
++	if (amdgpu_freesync_pcon_allow_all) {
++		DRM_INFO("DP-HDMI adapter Freesync PCON whitelist bypassed - Device branch_dev_id : %u\n", branch_dev_id);
++		return true;
++	}
++
+ 	bool ret_val = false;
+ 
+ 	switch (branch_dev_id) {
+-- 
+2.55.0
+

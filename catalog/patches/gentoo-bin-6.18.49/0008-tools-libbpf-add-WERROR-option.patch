@@ -1,0 +1,41 @@
+From 7d3d355a7fd482fecdd22211306e6cacbe012dfb Mon Sep 17 00:00:00 2001
+From: Sam James <sam@gentoo.org>
+Date: Sat, 5 Jul 2025 11:43:12 +0100
+Subject: [PATCH 08/10] tools/libbpf: add WERROR option
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Check the 'WERROR' variable and suppress adding '-Werror' if WERROR=0.
+
+This mirrors what tools/perf and other directories in tools do to handle
+-Werror rather than adding it unconditionally.
+
+Signed-off-by: Sam James <sam@gentoo.org>
+From: https://lore.kernel.org/bpf/7e6c41e47c6a8ab73945e6aac319e0dd53337e1b.1751712192.git.sam@gentoo.org
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ tools/lib/bpf/Makefile | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/tools/lib/bpf/Makefile b/tools/lib/bpf/Makefile
+index 168140f8e646..9563d37265da 100644
+--- a/tools/lib/bpf/Makefile
++++ b/tools/lib/bpf/Makefile
+@@ -77,10 +77,15 @@ else
+   CFLAGS := -g -O2
+ endif
+ 
++# Treat warnings as errors unless directed not to
++ifneq ($(WERROR),0)
++  CFLAGS += -Werror
++endif
++
+ # Append required CFLAGS
+ override CFLAGS += -std=gnu89
+ override CFLAGS += $(EXTRA_WARNINGS) -Wno-switch-enum
+-override CFLAGS += -Werror -Wall
++override CFLAGS += -Wall
+ override CFLAGS += $(INCLUDES)
+ override CFLAGS += -fvisibility=hidden
+ override CFLAGS += -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64

@@ -1,0 +1,37 @@
+From 4d1dbe763e9cc31c0ccedadec71ab4943cf2afd4 Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Sun, 12 Jul 2026 11:05:06 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Update coexistence version
+ to 9.24.0
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+RTL8922D first release, add related feature support.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260712030506.43438-12-pkshih@realtek.com
+(cherry picked from commit c2d96cd05c17c7b53f52395c766f629df3a78b3a)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/coex.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/coex.c b/drivers/net/wireless/realtek/rtw89/coex.c
+index a6b1aa2cb24e..b044b25aeade 100644
+--- a/drivers/net/wireless/realtek/rtw89/coex.c
++++ b/drivers/net/wireless/realtek/rtw89/coex.c
+@@ -11,7 +11,7 @@
+ #include "ps.h"
+ #include "reg.h"
+ 
+-#define RTW89_COEX_VERSION 0x09000113
++#define RTW89_COEX_VERSION 0x09180013
+ #define FCXDEF_STEP 50 /* MUST <= FCXMAX_STEP and match with wl fw*/
+ #define BTC_E2G_LIMIT_DEF 80
+ 
+-- 
+2.55.0
+

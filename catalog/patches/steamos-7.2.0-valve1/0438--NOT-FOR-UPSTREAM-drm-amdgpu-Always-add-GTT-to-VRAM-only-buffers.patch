@@ -1,0 +1,42 @@
+From 55161380d2bf4f08f2de786a161603e4558b7915 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <natalie.vock@gmx.de>
+Date: Sat, 20 Jun 2026 10:50:09 +0200
+Subject: [PATCH] [NOT-FOR-UPSTREAM] drm/amdgpu: Always add GTT to VRAM-only
+ buffers
+
+VRAM-only initial domains are a means of prioritization, which is
+superseded by cgroups on SteamOS.
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
+index f754a4a3a1c2..d9de309a4a68 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_gem.c
+@@ -473,6 +473,8 @@ int amdgpu_gem_create_ioctl(struct drm_device *dev, void *data,
+ 	}
+ 
+ 	initial_domain = (u32)(0xffffffff & args->in.domains);
++	if (initial_domain == AMDGPU_GEM_DOMAIN_VRAM)
++		initial_domain |= AMDGPU_GEM_DOMAIN_GTT;
+ retry:
+ 	r = amdgpu_gem_object_create(adev, size, args->in.alignment,
+ 				     initial_domain,
+@@ -483,10 +485,6 @@ retry:
+ 			goto retry;
+ 		}
+ 
+-		if (initial_domain == AMDGPU_GEM_DOMAIN_VRAM) {
+-			initial_domain |= AMDGPU_GEM_DOMAIN_GTT;
+-			goto retry;
+-		}
+ 		DRM_DEBUG("Failed to allocate GEM object (%llu, %d, %llu, %d)\n",
+ 				size, initial_domain, args->in.alignment, r);
+ 	}
+-- 
+2.55.0
+

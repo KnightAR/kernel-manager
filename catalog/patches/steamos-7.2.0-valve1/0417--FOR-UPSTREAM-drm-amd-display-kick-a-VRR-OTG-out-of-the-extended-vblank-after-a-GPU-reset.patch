@@ -1,0 +1,120 @@
+From 5c8d728048a2664282a398e196d820d63e431093 Mon Sep 17 00:00:00 2001
+From: Matthew Schwartz <matthew.schwartz@linux.dev>
+Date: Tue, 16 Jun 2026 17:41:07 -0700
+Subject: [PATCH] [FOR-UPSTREAM] drm/amd/display: kick a VRR OTG out of the
+ extended vblank after a GPU reset
+
+With VRR active, the OTG is left parked deep in the DRR-extended vblank
+(near v_total_max) after the in-reset restore. On DCN the v_total_min
+apply that ends an extended frame is masked to a TRIGA (surface-update)
+event. The in-reset restore re-arms DRR with v_total still extended and
+its full-surface update re-triggers with that same extended v_total, so
+the OTG keeps scanning the extended frame. It never wraps past the
+vupdate point and never raises VUPDATE_NO_LOCK, which the vupdate_no_lock
+rework made the sole DCN vblank and flip completion source. The flip
+submitted across the reset never completes (flip_done timeout) and the
+display wedges until a modeset reprograms the timing.
+
+Add dc_force_drr_frame() to collapse v_total to base with
+set_vtotal_min_max() and pulse the manual trigger, so the OTG applies the
+base v_total, completes a frame, and resumes raising VUPDATE_NO_LOCK.
+Call it for active VRR OTGs at the end of dm_resume()'s in-reset path.
+
+Signed-off-by: Matthew Schwartz <matthew.schwartz@linux.dev>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c | 14 +++++++
+ drivers/gpu/drm/amd/display/dc/core/dc.c      | 39 +++++++++++++++++++
+ drivers/gpu/drm/amd/display/dc/dc.h           |  1 +
+ 3 files changed, 54 insertions(+)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+index 516abf41d3e5..95c69f810558 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -3998,6 +3998,20 @@ static int dm_resume(struct amdgpu_ip_block *ip_block)
+ 
+ 		dm_gpureset_toggle_interrupts(adev, dm->cached_dc_state, true);
+ 
++		/*
++		 * A VRR OTG re-enters DRR after the restore and parks in the
++		 * extended vblank. The reset path issues no flip to release it,
++		 * so force a frame to get it raising VUPDATE_NO_LOCK again.
++		 */
++		for (i = 0; i < dm->cached_dc_state->stream_count; i++) {
++			struct amdgpu_crtc *acrtc = get_crtc_by_otg_inst(adev,
++				dm->cached_dc_state->stream_status[i].primary_otg_inst);
++
++			if (acrtc && acrtc->base.state &&
++			    amdgpu_dm_crtc_vrr_active(to_dm_crtc_state(acrtc->base.state)))
++				dc_force_drr_frame(dm->dc, acrtc->otg_inst);
++		}
++
+ 		dc_state_release(dm->cached_dc_state);
+ 		dm->cached_dc_state = NULL;
+ 
+diff --git a/drivers/gpu/drm/amd/display/dc/core/dc.c b/drivers/gpu/drm/amd/display/dc/core/dc.c
+index 70294547fc97..6476b5ebf7ff 100644
+--- a/drivers/gpu/drm/amd/display/dc/core/dc.c
++++ b/drivers/gpu/drm/amd/display/dc/core/dc.c
+@@ -6213,6 +6213,45 @@ bool dc_get_flip_pending_on_otg(struct dc *dc, int otg_inst)
+ 	return flip_pending;
+ }
+ 
++/*
++ * dc_force_drr_frame() - kick a VRR OTG out of the extended vblank
++ *
++ * @dc: display core context
++ * @otg_inst: OTG instance to force a frame on
++ *
++ * A VRR OTG parked in the extended vblank at v_total_max only ends the frame
++ * on a TRIGA (flip or surface update) event. After a GPU reset there is no
++ * flip to drive it, so collapse v_total to base and pulse the manual trigger.
++ * The OTG then applies the base v_total, completes a frame, and resumes
++ * raising VUPDATE_NO_LOCK.
++ */
++void dc_force_drr_frame(struct dc *dc, int otg_inst)
++{
++	int i;
++
++	if (!dc || !dc->current_state)
++		return;
++
++	dc_exit_ips_for_hw_access(dc);
++
++	for (i = 0; i < dc->res_pool->pipe_count; i++) {
++		struct pipe_ctx *pipe_ctx = &dc->current_state->res_ctx.pipe_ctx[i];
++		struct timing_generator *tg = pipe_ctx->stream_res.tg;
++		struct dc_stream_state *stream = pipe_ctx->stream;
++
++		if (!stream || !tg || tg->inst != otg_inst)
++			continue;
++
++		if (tg->funcs->set_vtotal_min_max)
++			tg->funcs->set_vtotal_min_max(tg,
++				stream->timing.v_total - 1,
++				stream->timing.v_total - 1);
++		if (tg->funcs->program_manual_trigger)
++			tg->funcs->program_manual_trigger(tg);
++		break;
++	}
++}
++
+ void dc_power_down_on_boot(struct dc *dc)
+ {
+ 	if (dc->ctx->dce_environment != DCE_ENV_VIRTUAL_HW &&
+diff --git a/drivers/gpu/drm/amd/display/dc/dc.h b/drivers/gpu/drm/amd/display/dc/dc.h
+index bdfe2fc4b516..0c6db7cf6fc1 100644
+--- a/drivers/gpu/drm/amd/display/dc/dc.h
++++ b/drivers/gpu/drm/amd/display/dc/dc.h
+@@ -2893,6 +2893,7 @@ enum dc_irq_source dc_interrupt_to_irq_source(
+ bool dc_interrupt_set(struct dc *dc, enum dc_irq_source src, bool enable);
+ void dc_interrupt_ack(struct dc *dc, enum dc_irq_source src);
+ bool dc_get_flip_pending_on_otg(struct dc *dc, int otg_inst);
++void dc_force_drr_frame(struct dc *dc, int otg_inst);
+ enum dc_irq_source dc_get_hpd_irq_source_at_index(
+ 		struct dc *dc, uint32_t link_index);
+ 
+-- 
+2.55.0
+

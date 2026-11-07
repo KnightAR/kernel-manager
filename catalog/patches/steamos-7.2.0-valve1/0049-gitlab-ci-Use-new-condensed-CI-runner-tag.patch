@@ -1,0 +1,29 @@
+From 13f126f4984ad970a41d980305289eaf6eac2e6b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Vivek=20Das=C2=A0Mohapatra?= <vivek@collabora.com>
+Date: Thu, 23 May 2024 14:40:00 +0100
+Subject: [PATCH] gitlab-ci: Use new condensed CI runner tag
+
+Signed-off-by: Robert Beckett <bob.beckett@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 903b66cfa7d9..dd0b81388d9f 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -12,9 +12,7 @@ default:
+     when: always
+   interruptible: true
+   tags:
+-    - autoscaled
+-    - isolated
+-    - linux-heavy
++    - x86_64-linux-kvm-docker-heavy
+ 
+ workflow:
+   rules:
+-- 
+2.55.0
+

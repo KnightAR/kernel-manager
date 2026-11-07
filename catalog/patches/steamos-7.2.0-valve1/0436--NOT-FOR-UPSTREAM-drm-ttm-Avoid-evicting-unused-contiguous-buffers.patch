@@ -1,0 +1,136 @@
+From 0cb65b9d8b52ccfca3490ba8c065397e5c0dc056 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <natalie.vock@gmx.de>
+Date: Fri, 26 Jun 2026 19:40:53 +0200
+Subject: [PATCH] [NOT-FOR-UPSTREAM] drm/ttm: Avoid evicting unused contiguous
+ buffers
+
+They're most likely going to be used for scanout and eventually moved
+back. When they're moved back, stuff gets evicted at random until a long
+enough contiguous memory range is found. This can frequently evict like
+half of your VRAM, so if there's literally any way to not do that, try
+taking that way.
+
+However, if the buffers haven't been used for a really long time, assume
+they're inert and try evicting them anyway. If something comes back and
+uses them, the timeout is reset so the perf cliff should manifest as a
+stutter on application switch at most.
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/ttm/ttm_bo.c       | 22 ++++++++++++++++++++++
+ drivers/gpu/drm/ttm/ttm_resource.c |  1 +
+ include/drm/ttm/ttm_bo.h           |  4 ++++
+ include/drm/ttm/ttm_resource.h     |  1 +
+ 4 files changed, 28 insertions(+)
+
+diff --git a/drivers/gpu/drm/ttm/ttm_bo.c b/drivers/gpu/drm/ttm/ttm_bo.c
+index 293884266f02..999acb47f614 100644
+--- a/drivers/gpu/drm/ttm/ttm_bo.c
++++ b/drivers/gpu/drm/ttm/ttm_bo.c
+@@ -602,6 +602,11 @@ struct ttm_bo_evict_walk {
+ 	/** @from_bulk: True if we're evicting from the same ordered bulk move. */
+ 	bool from_bulk;
+ 
++	/** @try_contiguous: True if we should try evicting contiguous resources. */
++	bool try_contiguous;
++	/** @hit_contiguous: True if we hit a contiguous resources we refused to evict. */
++	bool hit_contiguous;
++
+ 	/** @alloc_state: State associated with the allocation attempt. */
+ 	struct ttm_bo_alloc_state *alloc_state;
+ };
+@@ -614,6 +619,14 @@ static s64 ttm_bo_evict_cb(struct ttm_lru_walk *walk, struct ttm_buffer_object *
+ 	bool evict_valuable;
+ 	s64 lret;
+ 
++	if (bo->resource && bo->resource->needs_contiguous &&
++	    ktime_to_us(ktime_get()) - bo->last_pin_us <=
++		    TTM_CONTIGUOUS_PIN_TIMEOUT) {
++		evict_walk->hit_contiguous = true;
++		if (!evict_walk->try_contiguous)
++			return 0;
++	}
++
+ 	/*
+ 	 * If may_try_low is not set, then we're trying to evict unprotected
+ 	 * buffers in favor of a protected allocation for charge_pool. Explicitly skip
+@@ -760,6 +773,13 @@ retry:
+ 		evict_walk.try_low = true;
+ 		goto retry;
+ 	}
++
++	if (!lret && !evict_walk.try_contiguous && !evict_walk.hit_contiguous &&
++	    state->may_try_low) {
++		evict_walk.try_contiguous = true;
++		goto retry;
++	}
++
+ out:
+ 	state->in_evict = false;
+ 	if (lret < 0)
+@@ -780,6 +800,7 @@ void ttm_bo_pin(struct ttm_buffer_object *bo)
+ {
+ 	dma_resv_assert_held(bo->base.resv);
+ 	spin_lock(&bo->bdev->lru_lock);
++	bo->last_pin_us = ktime_to_us(ktime_get());
+ 	if (bo->resource)
+ 		ttm_resource_del_bulk_move(bo->resource, bo);
+ 	if (!bo->pin_count++ && bo->resource)
+@@ -1096,6 +1117,7 @@ int ttm_bo_init_reserved(struct ttm_device *bdev, struct ttm_buffer_object *bo,
+ 	bo->page_alignment = alignment;
+ 	bo->destroy = destroy;
+ 	bo->pin_count = 0;
++	bo->last_pin_us = 0;
+ 	bo->sg = sg;
+ 	bo->bulk_move = NULL;
+ 	if (resv)
+diff --git a/drivers/gpu/drm/ttm/ttm_resource.c b/drivers/gpu/drm/ttm/ttm_resource.c
+index ed330a545d92..071779e7c8e6 100644
+--- a/drivers/gpu/drm/ttm/ttm_resource.c
++++ b/drivers/gpu/drm/ttm/ttm_resource.c
+@@ -397,6 +397,7 @@ void ttm_resource_init(struct ttm_buffer_object *bo,
+ 	res->size = bo->base.size;
+ 	res->mem_type = place->mem_type;
+ 	res->placement = place->flags;
++	res->needs_contiguous = place->flags & TTM_PL_FLAG_CONTIGUOUS;
+ 	res->bus.addr = NULL;
+ 	res->bus.offset = 0;
+ 	res->bus.is_iomem = false;
+diff --git a/include/drm/ttm/ttm_bo.h b/include/drm/ttm/ttm_bo.h
+index dcf290cf1667..c28582e9ba40 100644
+--- a/include/drm/ttm/ttm_bo.h
++++ b/include/drm/ttm/ttm_bo.h
+@@ -70,6 +70,8 @@ enum ttm_bo_type {
+ 	ttm_bo_type_sg
+ };
+ 
++#define TTM_CONTIGUOUS_PIN_TIMEOUT 20000000L
++
+ /**
+  * struct ttm_buffer_object
+  *
+@@ -116,6 +118,8 @@ struct ttm_buffer_object {
+ 	unsigned priority;
+ 	unsigned pin_count;
+ 
++	s64 last_pin_us;
++
+ 	/**
+ 	 * @delayed_delete: Work item used when we can't delete the BO
+ 	 * immediately
+diff --git a/include/drm/ttm/ttm_resource.h b/include/drm/ttm/ttm_resource.h
+index 3e259e120fbf..93673e405119 100644
+--- a/include/drm/ttm/ttm_resource.h
++++ b/include/drm/ttm/ttm_resource.h
+@@ -265,6 +265,7 @@ struct ttm_resource {
+ 	size_t size;
+ 	uint32_t mem_type;
+ 	uint32_t placement;
++	bool needs_contiguous;
+ 	struct ttm_bus_placement bus;
+ 	struct ttm_buffer_object *bo;
+ 
+-- 
+2.55.0
+

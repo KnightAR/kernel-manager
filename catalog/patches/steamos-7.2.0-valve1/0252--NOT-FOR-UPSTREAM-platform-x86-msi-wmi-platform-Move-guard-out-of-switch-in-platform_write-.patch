@@ -1,0 +1,35 @@
+From 68c25798e927d1f85b811a6e73fe5ff44a2afe28 Mon Sep 17 00:00:00 2001
+From: "Derek J. Clark" <derekjohn.clark@gmail.com>
+Date: Fri, 12 Jun 2026 00:04:26 +0000
+Subject: [PATCH] [NOT-FOR-UPSTREAM] platform/x86: msi-wmi-platform: Move guard
+ out of switch in platform_write()
+
+The ML patch set uses a guard within a switch case that violates cleanup
+rules. Move the guard outside the switch so all return paths are covered.
+
+Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/platform/x86/msi-wmi-platform.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/platform/x86/msi-wmi-platform.c b/drivers/platform/x86/msi-wmi-platform.c
+index dfb65ac8fbf6..33acd448f674 100644
+--- a/drivers/platform/x86/msi-wmi-platform.c
++++ b/drivers/platform/x86/msi-wmi-platform.c
+@@ -675,11 +675,11 @@ static int msi_wmi_platform_write(struct device *dev, enum hwmon_sensor_types ty
+ 	u8 buffer[32] = { };
+ 	int ret;
+ 
++	guard(mutex)(&data->wmi_lock);
+ 	switch (type) {
+ 	case hwmon_pwm:
+ 		switch (attr) {
+ 		case hwmon_pwm_enable:
+-			guard(mutex)(&data->wmi_lock);
+ 
+ 			buffer[0] = MSI_PLATFORM_AP_SUBFEATURE_FAN_MODE;
+ 			ret = msi_wmi_platform_query_unlocked(
+-- 
+2.55.0
+

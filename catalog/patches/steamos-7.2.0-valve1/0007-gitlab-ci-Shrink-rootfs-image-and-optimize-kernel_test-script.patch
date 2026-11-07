@@ -1,0 +1,73 @@
+From 7453d5817f48a86b96708ed3390198d0ab5ac31a Mon Sep 17 00:00:00 2001
+From: Muhammad Usama Anjum <usama.anjum@collabora.com>
+Date: Wed, 12 Oct 2022 19:42:41 +0500
+Subject: [PATCH] gitlab-ci: Shrink rootfs image and optimize kernel_test
+ script
+
+In addition to reducing image size, drop the packages installations in the
+kernel_test script.
+
+(cherry picked from commit e0113fe687b8a5631da6ed22519653e113043143)
+[cristian: Reword commit, update ROOTFS_IMAGE_URL]
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 13 ++++++-------
+ kernel_test.sh |  3 ---
+ 2 files changed, 6 insertions(+), 10 deletions(-)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index a019eeb4fb17..78d1c86a0f75 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -1,8 +1,8 @@
+ variables:
+   DOCKER_DRIVER: overlay2
+   KERNEL: 'bzImage'
+-  ROOTFS_NAME: 'ubuntu-19.04-desktopV4-amd64.img.qcow2'
+-  ROOTFS_IMAGE_URL: 'https://people.collabora.com/~laks/lava/kernel_test/ubuntu-19.04-desktopV4-amd64.img.qcow2.gz'
++  ROOTFS_NAME: 'stretch.img'
++  ROOTFS_IMAGE_URL: 'https://gitlab.steamos.cloud/api/v4/projects/kernel-research%2Frootfs/jobs/128684/artifacts'
+   GIT_AUTHOR_NAME: "Gitlab-ci"
+   GIT_AUTHOR_EMAIL: "gitlab@gitlab.steamos.cloud"
+   TAG: CI_${CI_PIPELINE_ID}_${CI_COMMIT_SHORT_SHA}
+@@ -19,7 +19,7 @@ kernel build:
+      - autoscaled 
+   before_script:
+     - apt-get update -y
+-    - apt-get install -y rsync git build-essential bc kmod cpio flex cpio libncurses5-dev bison libssl-dev libelf-dev openssh-client curl qemu-system*
++    - apt-get install -y rsync git build-essential bc kmod cpio flex cpio libncurses5-dev bison libssl-dev libelf-dev openssh-client curl qemu-system* unzip
+   script:
+      - make x86_64_defconfig && make kvm_guest.config
+      - ./scripts/kconfig/merge_config.sh .config .config-fragment
+@@ -28,10 +28,9 @@ kernel build:
+      - cp -v arch/x86/boot/bzImage .
+      - cp .config kernel_config
+      # download rootfs
+-     - curl  ${ROOTFS_IMAGE_URL} -o "${ROOTFS_NAME}.gz"
+-     - gunzip "${ROOTFS_NAME}.gz"
+-     - echo "Running cmd $QEMU_CMD"
+-     - qemu-system-x86_64 -enable-kvm -nographic -kernel ${KERNEL} -drive file=${ROOTFS_NAME},format=qcow2 -device virtio-serial-pci -virtfs local,path=$(pwd),mount_tag=steamlogs,security_model=none -m 2G -smp 2 -cpu host -net user,hostfwd=tcp::2222-:22 -net nic,model=virtio --append "root=/dev/sda1 rw console=ttyS0" &
++     - 'curl -L --header "PRIVATE-TOKEN: 2HUDR583zAq2ym4Pfm4x" "$ROOTFS_IMAGE_URL" --output artifact.zip'
++     - unzip artifact.zip
++     - qemu-system-x86_64 -enable-kvm -nographic -kernel ${KERNEL} -drive file=${ROOTFS_NAME},format=raw -device virtio-serial-pci -virtfs local,path=$(pwd),mount_tag=steamlogs,security_model=none -m 2G -smp 2 -cpu host -net user,hostfwd=tcp::2222-:22 -net nic,model=virtio --append "root=/dev/sda rw console=ttyS0" &
+      - QEMU_PID=$!
+      - echo "QEMU pid is $QEMU_PID"
+      - sleep 90
+diff --git a/kernel_test.sh b/kernel_test.sh
+index 5b38c142d14c..848c30ab932f 100644
+--- a/kernel_test.sh
++++ b/kernel_test.sh
+@@ -21,9 +21,6 @@ cd /mnt
+ make headers_install INSTALL_HDR_PATH=/usr
+ echo "grep FUTEX_32"
+ grep FUTEX_32 /usr/include/linux/futex.h
+-apt-get update && apt-get install -y elfutils libunwind-dev binutils numactl libaudit-dev coreutils libelf-dev libzstd-dev libcap-dev
+-apt-get update && apt-get install -y flex bison build-essential 
+-apt-get update && apt-get install -y --fix-missing libiberty-dev libbabeltrace-ctf-dev libperl-dev libslang2-dev libssl-dev systemtap-sdt-dev libdw-dev
+ cd /mnt/tools/perf/ && make
+ 
+ echo -e "\t\t\t\t Completed perf benchmark build" 
+-- 
+2.55.0
+

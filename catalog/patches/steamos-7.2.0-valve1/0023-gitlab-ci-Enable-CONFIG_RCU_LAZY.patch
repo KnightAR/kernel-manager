@@ -1,0 +1,32 @@
+From 54ec3013225ff2c1128d6ce4c7e9823d8bba4bdd Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Thu, 9 Nov 2023 19:40:34 +0200
+Subject: [PATCH] gitlab-ci: Enable CONFIG_RCU_LAZY
+
+Enable RCU callback lazy invocation, to increase power savings.
+
+Note CONFIG_RCU_NOCB_CPU is a required dependency, hence enable this as
+well.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .config-fragment-extra | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/.config-fragment-extra b/.config-fragment-extra
+index 7b254354fb37..faaa650fed18 100644
+--- a/.config-fragment-extra
++++ b/.config-fragment-extra
+@@ -440,6 +440,8 @@ CONFIG_PWM_CRC=y
+ # CONFIG_RANDOM_TRUST_CPU is not set
+ CONFIG_RAS_CEC=y
+ CONFIG_RCU_BOOST=y
++CONFIG_RCU_NOCB_CPU=y
++CONFIG_RCU_LAZY=y
+ CONFIG_RCU_CPU_STALL_TIMEOUT=60
+ CONFIG_RCU_EXPERT=y
+ # CONFIG_RCU_TRACE is not set
+-- 
+2.55.0
+

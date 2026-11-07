@@ -1,0 +1,36 @@
+From b471774b1b1d04ba7241aaf73623c874871d05cc Mon Sep 17 00:00:00 2001
+From: Dhananjay Ugwekar <Dhananjay.Ugwekar@amd.com>
+Date: Thu, 17 Oct 2024 10:05:31 +0000
+Subject: [PATCH] cpufreq/amd-pstate: Remove the switch case in
+ amd_pstate_init()
+
+Replace the switch case with a more readable if condition.
+
+Signed-off-by: Dhananjay Ugwekar <Dhananjay.Ugwekar@amd.com>
+Reviewed-by: Mario Limonciello <mario.limonciello@amd.com>
+Link: https://lore.kernel.org/r/20241017100528.300143-4-Dhananjay.Ugwekar@amd.com
+Signed-off-by: Mario Limonciello <mario.limonciello@amd.com>
+(cherry picked from commit 162cfa4eba7350cdcbd610c4b2af860a0ecc5f21)
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/cpufreq/amd-pstate.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/cpufreq/amd-pstate.c b/drivers/cpufreq/amd-pstate.c
+index 3a6b4b224a66..b02df6f54e2a 100644
+--- a/drivers/cpufreq/amd-pstate.c
++++ b/drivers/cpufreq/amd-pstate.c
+@@ -2278,6 +2278,10 @@ static int __init amd_pstate_init(void)
+ 		return -ENODEV;
+ 	}
+ 
++	ret = amd_pstate_set_driver(cppc_state);
++	if (ret)
++		return ret;
++
+ 	/* capability check */
+ 	if (cpu_feature_enabled(X86_FEATURE_CPPC)) {
+ 		pr_debug("AMD CPPC MSR based functionality is supported\n");
+-- 
+2.55.0
+

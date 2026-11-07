@@ -1,0 +1,88 @@
+From 32aa455bb7f40d3a2999542c4bf8e4b2958071df Mon Sep 17 00:00:00 2001
+From: Robert Beckett <bob.beckett@collabora.com>
+Date: Tue, 9 Apr 2024 18:05:12 +0100
+Subject: [PATCH] drm: fix drm lastclose ignoring closed active fbs
+
+when fb's have been marked as closed, if there is still something active
+then don't restore fbdev during lastclose
+
+Signed-off-by: Robert Beckett <bob.beckett@collabora.com>
+(cherry picked from commit b8d24b23b0f95af6e912dc0f43244f59ec083d06)
+[fwd-ported on v6.11]
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/drm_fb_helper.c |  3 ++-
+ drivers/gpu/drm/drm_plane.c     | 21 +++++++++++++++++++++
+ include/drm/drm_plane.h         |  2 ++
+ 3 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/drm_fb_helper.c b/drivers/gpu/drm/drm_fb_helper.c
+index 80ca785bdb26..19def59e79a9 100644
+--- a/drivers/gpu/drm/drm_fb_helper.c
++++ b/drivers/gpu/drm/drm_fb_helper.c
+@@ -27,6 +27,7 @@
+  *      Dave Airlie <airlied@linux.ie>
+  *      Jesse Barnes <jesse.barnes@intel.com>
+  */
++#include "drm/drm_plane.h"
+ #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+ 
+ #include <linux/console.h>
+@@ -123,7 +124,7 @@ __drm_fb_helper_restore_fbdev_mode_unlocked(struct drm_fb_helper *fb_helper,
+ 	if (!drm_fbdev_emulation || !fb_helper)
+ 		return -ENODEV;
+ 
+-	if (READ_ONCE(fb_helper->deferred_setup))
++	if (READ_ONCE(fb_helper->deferred_setup) || drm_has_active_plane(fb_helper->dev))
+ 		return 0;
+ 
+ 	mutex_lock(&fb_helper->lock);
+diff --git a/drivers/gpu/drm/drm_plane.c b/drivers/gpu/drm/drm_plane.c
+index 46adef2a30c0..54664a378d7f 100644
+--- a/drivers/gpu/drm/drm_plane.c
++++ b/drivers/gpu/drm/drm_plane.c
+@@ -984,6 +984,27 @@ static int __setplane_check(struct drm_plane *plane,
+ 	return 0;
+ }
+ 
++/**
++ * drm_has_active_plane - check whether any planes are currently active
++ * @dev: the DRM device
++ *
++ * Return true if any planes are currently active
++ */
++bool drm_has_active_plane(struct drm_device *dev)
++{
++	struct drm_plane *plane;
++
++	drm_for_each_plane(plane, dev) {
++		if (plane->state && plane->state->crtc && plane->state->fb)
++			return true;
++		if (plane->crtc && plane->fb)
++			return true;
++	}
++
++	return false;
++}
++EXPORT_SYMBOL(drm_has_active_plane);
++
+ /**
+  * drm_any_plane_has_format - Check whether any plane supports this format and modifier combination
+  * @dev: DRM device
+diff --git a/include/drm/drm_plane.h b/include/drm/drm_plane.h
+index 419c88c873a6..64d56c0b711a 100644
+--- a/include/drm/drm_plane.h
++++ b/include/drm/drm_plane.h
+@@ -1005,6 +1005,8 @@ static inline struct drm_plane *drm_plane_find(struct drm_device *dev,
+ #define drm_for_each_plane(plane, dev) \
+ 	list_for_each_entry(plane, &(dev)->mode_config.plane_list, head)
+ 
++bool drm_has_active_plane(struct drm_device *dev);
++
+ bool drm_plane_has_format(struct drm_plane *plane,
+ 			  u32 format, u64 modifier);
+ bool drm_any_plane_has_format(struct drm_device *dev,
+-- 
+2.55.0
+

@@ -1,0 +1,149 @@
+From 8fc17cdf3b8e2afec307286501c251b3f0003344 Mon Sep 17 00:00:00 2001
+From: Chih-Kang Chang <gary.chang@realtek.com>
+Date: Fri, 17 Jul 2026 14:19:06 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: 8922d: bypass TXIQK when scan
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When connected to an AP and a scan is triggered, the FW may fail to
+transmit probe request because switching channels may load an
+uninitialized TXIQK table. Therefore, bypass TXIQK during scanning
+to avoid using invalid calibration values.
+
+Signed-off-by: Chih-Kang Chang <gary.chang@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260717061910.54466-6-pkshih@realtek.com
+(cherry picked from commit 89833570775ad001a79b6fc970d814c9fc70cf40)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/core.h     |  1 +
+ drivers/net/wireless/realtek/rtw89/reg.h      | 10 +++
+ drivers/net/wireless/realtek/rtw89/rtw8922d.c | 64 ++++++++++++++++++-
+ 3 files changed, 73 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index 11beb5f5dcf0..73d8d421e37a 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -6284,6 +6284,7 @@ struct rtw89_iqk_info {
+ 	u8 iqk_table_idx[RTW89_IQK_PATH_NR];
+ 	u32 lok_idac[RTW89_IQK_CHS_NR][RTW89_IQK_PATH_NR];
+ 	u32 lok_vbuf[RTW89_IQK_CHS_NR][RTW89_IQK_PATH_NR];
++	u32 iqc_bak[2];
+ };
+ 
+ #define RTW89_DPK_RF_PATH 2
+diff --git a/drivers/net/wireless/realtek/rtw89/reg.h b/drivers/net/wireless/realtek/rtw89/reg.h
+index 053028b9ef16..756b94dcd475 100644
+--- a/drivers/net/wireless/realtek/rtw89/reg.h
++++ b/drivers/net/wireless/realtek/rtw89/reg.h
+@@ -10121,6 +10121,7 @@
+ #define B_S1_DACKQ8_K GENMASK(15, 8)
+ #define R_NCTL_CFG 0x8000
+ #define R_NCTL_CFG_BE4 0x38000
++#define B_NCTL_CFG_BE4_SPAGE GENMASK(25, 24)
+ #define B_NCTL_CHK_EN BIT(3)
+ #define B_NCTL_CFG_SPAGE GENMASK(2, 1)
+ #define R_NCTL_RPT 0x8008
+@@ -11061,6 +11062,15 @@
+ #define B_KTBL0_MLD_IDX0 GENMASK(25, 24)
+ #define B_KTBL0_MLD_IDX1 GENMASK(27, 26)
+ #define B_KTBL0_RST BIT(31)
++#define R_CFIR_CTRL_A_BE4 0x38124
++#define R_CFIR_CTRL_B_BE4 0x38224
++#define B_CFIR_CTRL_KIDX0_EN BIT(8)
++#define B_CFIR_CTRL_KIDX1_EN BIT(24)
++#define R_TX_IQC_A_BE4 0x38138
++#define R_TX_IQC_B_BE4 0x38238
++#define B_TX_IQC_X GENMASK(31, 20)
++#define B_TX_IQC_Y GENMASK(19, 8)
++#define B_TX_IQC_DPK BIT(3)
+ #define R_KTBL1A_BE4 0x38154
+ #define R_KTBL1B_BE4 0x38254
+ #define B_KTBL1_TBL0 BIT(3)
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922d.c b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+index 929bcfc8089d..fde4117bcd49 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922d.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+@@ -2765,14 +2765,74 @@ static void rtw8922d_rfk_band_changed(struct rtw89_dev *rtwdev,
+ {
+ }
+ 
++static void __rtw8922d_txiqk_disable(struct rtw89_dev *rtwdev)
++{
++	struct rtw89_iqk_info *iqk_info = &rtwdev->iqk;
++	u8 path, kidx;
++
++	for (path = RF_PATH_A; path <= RF_PATH_B; path++) {
++		kidx = rtw89_phy_read32_mask(rtwdev, R_KTBL0A_BE4 + (path << 8),
++					     B_KTBL0_IDX0);
++		if (kidx == 0) {
++			rtw89_phy_write32_clr(rtwdev, R_CFIR_CTRL_A_BE4 + (path << 8),
++					      B_CFIR_CTRL_KIDX0_EN);
++		} else if (kidx == 1) {
++			rtw89_phy_write32_clr(rtwdev, R_CFIR_CTRL_A_BE4 + (path << 8),
++					      B_CFIR_CTRL_KIDX1_EN);
++		} else {
++			rtw89_phy_write32_mask(rtwdev, R_NCTL_CFG_BE4,
++					       B_NCTL_CFG_BE4_SPAGE, 0x1);
++			rtw89_phy_write32_clr(rtwdev, R_CFIR_CTRL_A_BE4 + (path << 8),
++					      B_CFIR_CTRL_KIDX0_EN);
++			rtw89_phy_write32_mask(rtwdev, R_NCTL_CFG_BE4,
++					       B_NCTL_CFG_BE4_SPAGE, 0x0);
++		}
++
++		iqk_info->iqc_bak[path] =
++			rtw89_phy_read32(rtwdev, R_TX_IQC_A_BE4 + (path << 8));
++		rtw89_phy_write32(rtwdev, R_TX_IQC_A_BE4 + (path << 8), 0x40000002);
++	}
++}
++
++static void __rtw8922d_txiqk_enable(struct rtw89_dev *rtwdev)
++{
++	struct rtw89_iqk_info *iqk_info = &rtwdev->iqk;
++	u8 path, kidx;
++
++	for (path = RF_PATH_A; path <= RF_PATH_B; path++) {
++		kidx = rtw89_phy_read32_mask(rtwdev, R_KTBL0A_BE4 + (path << 8),
++					     B_KTBL0_IDX0);
++		if (kidx == 0) {
++			rtw89_phy_write32_set(rtwdev, R_CFIR_CTRL_A_BE4 + (path << 8),
++					      B_CFIR_CTRL_KIDX0_EN);
++		} else if (kidx == 1) {
++			rtw89_phy_write32_set(rtwdev, R_CFIR_CTRL_A_BE4 + (path << 8),
++					      B_CFIR_CTRL_KIDX1_EN);
++		} else {
++			rtw89_phy_write32_mask(rtwdev, R_NCTL_CFG_BE4,
++					       B_NCTL_CFG_BE4_SPAGE, 0x1);
++			rtw89_phy_write32_set(rtwdev, R_CFIR_CTRL_A_BE4 + (path << 8),
++					      B_CFIR_CTRL_KIDX0_EN);
++			rtw89_phy_write32_mask(rtwdev, R_NCTL_CFG_BE4,
++					       B_NCTL_CFG_BE4_SPAGE, 0x0);
++		}
++
++		rtw89_phy_write32(rtwdev, R_TX_IQC_A_BE4 + (path << 8),
++				  iqk_info->iqc_bak[path]);
++	}
++}
++
+ static void rtw8922d_rfk_scan(struct rtw89_dev *rtwdev,
+ 			      struct rtw89_vif_link *rtwvif_link,
+ 			      bool start)
+ {
+-	if (start)
++	if (start) {
+ 		__rtw8922d_tssi_disable(rtwdev, rtwvif_link->phy_idx);
+-	else
++		__rtw8922d_txiqk_disable(rtwdev);
++	} else {
+ 		__rtw8922d_tssi_enable(rtwdev, rtwvif_link->phy_idx);
++		__rtw8922d_txiqk_enable(rtwdev);
++	}
+ }
+ 
+ static void rtw8922d_rfk_track(struct rtw89_dev *rtwdev)
+-- 
+2.55.0
+

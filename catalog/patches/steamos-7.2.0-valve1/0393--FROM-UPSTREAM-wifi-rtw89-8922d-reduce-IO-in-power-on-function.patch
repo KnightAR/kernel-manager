@@ -1,0 +1,69 @@
+From a4d8146252765e74d99c34548c8e108e5d3235b5 Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Fri, 17 Jul 2026 14:19:09 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: 8922d: reduce IO in power-on
+ function
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+To improve initial time, merge some IO to reduce IO times. Two registers
+are:
+ 1. R_BE_SYS_PW_CTRL: 0x4[12:11]=0, 0x4[18]=1, 0x4[15]=0, and 0x4[10]=0
+ 2. R_BE_SYS_ADIE_PAD_PWR_CTRL: Merge 0x18[6] and 0x18[5]
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260717061910.54466-9-pkshih@realtek.com
+(cherry picked from commit e738d2ac80c945c8fdf91b673e9cadeb394bfe6c)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/rtw8922d.c | 18 +++++++++---------
+ 1 file changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922d.c b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+index fde4117bcd49..fd4c92ba3f7b 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922d.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+@@ -518,14 +518,15 @@ static int rtw8922d_pwr_on_func(struct rtw89_dev *rtwdev)
+ 	}
+ 
+ begin:
+-	rtw89_write32_clr(rtwdev, R_BE_SYS_PW_CTRL, B_BE_AFSM_WLSUS_EN |
+-						    B_BE_AFSM_PCIE_SUS_EN);
+-	rtw89_write32_set(rtwdev, R_BE_SYS_PW_CTRL, B_BE_DIS_WLBT_PDNSUSEN_SOPC);
+-	rtw89_write32_set(rtwdev, R_BE_WLLPS_CTRL, B_BE_DIS_WLBT_LPSEN_LOPC);
++	val32 = rtw89_read32(rtwdev, R_BE_SYS_PW_CTRL);
++	val32 &= ~(B_BE_AFSM_WLSUS_EN | B_BE_AFSM_PCIE_SUS_EN | B_BE_APFM_SWLPS);
++	val32 |= B_BE_DIS_WLBT_PDNSUSEN_SOPC;
+ 	if (hal->cid != RTL8922D_CID7090)
+-		rtw89_write32_clr(rtwdev, R_BE_SYS_PW_CTRL, B_BE_APDM_HPDN);
++		val32 &= ~B_BE_APDM_HPDN;
++	rtw89_write32(rtwdev, R_BE_SYS_PW_CTRL, val32);
++
++	rtw89_write32_set(rtwdev, R_BE_WLLPS_CTRL, B_BE_DIS_WLBT_LPSEN_LOPC);
+ 	rtw89_write32_clr(rtwdev, R_BE_FWS1ISR, B_BE_FS_WL_HW_RADIO_OFF_INT);
+-	rtw89_write32_clr(rtwdev, R_BE_SYS_PW_CTRL, B_BE_APFM_SWLPS);
+ 
+ 	ret = read_poll_timeout(rtw89_read32, val32, val32 & B_BE_RDY_SYSPWR,
+ 				1000, 3000000, false, rtwdev, R_BE_SYS_PW_CTRL);
+@@ -581,14 +582,13 @@ begin:
+ 	if (ret)
+ 		return ret;
+ 
+-	rtw89_write32_set(rtwdev, R_BE_SYS_ADIE_PAD_PWR_CTRL, B_BE_SYM_PADPDN_WL_RFC1_1P3);
++	rtw89_write32_set(rtwdev, R_BE_SYS_ADIE_PAD_PWR_CTRL,
++			  B_BE_SYM_PADPDN_WL_RFC1_1P3 | B_BE_SYM_PADPDN_WL_RFC0_1P3);
+ 
+ 	ret = rtw89_mac_write_xtal_si(rtwdev, XTAL_SI_ANAPAR_WL, 0x40, 0x40);
+ 	if (ret)
+ 		return ret;
+ 
+-	rtw89_write32_set(rtwdev, R_BE_SYS_ADIE_PAD_PWR_CTRL, B_BE_SYM_PADPDN_WL_RFC0_1P3);
+-
+ 	ret = rtw89_mac_write_xtal_si(rtwdev, XTAL_SI_ANAPAR_WL, 0x20, 0x20);
+ 	if (ret)
+ 		return ret;
+-- 
+2.55.0
+

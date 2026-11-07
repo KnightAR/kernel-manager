@@ -1,0 +1,66 @@
+From 8614f9acfcfb38eb71a813db3dfc7b15c66504a0 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <nat@pixelcluster.dev>
+Date: Wed, 12 Aug 2026 16:20:00 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/amdgpu: Allow evicting from own resv for
+ kernel buffers too
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This is necessary to prevent PT allocations from failing if the app
+already occupies all of VRAM.
+
+Signed-off-by: Natalie Vock <nat@pixelcluster.dev>
+[nfraprado: fixed conflicts]
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_object.c |  2 +-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c     | 11 +++++++++++
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c
+index 1df47be26047..0fbf6a977814 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c
+@@ -634,7 +634,7 @@ int amdgpu_bo_create(struct amdgpu_device *adev,
+ 		.no_wait_gpu = bp->no_wait_gpu,
+ 		/* We opt to avoid OOM on system pages allocations */
+ 		.gfp_retry_mayfail = true,
+-		.allow_res_evict = bp->type != ttm_bo_type_kernel,
++		.allow_res_evict = true,
+ 		.resv = bp->resv,
+ 		.exec = bp->exec,
+ 	};
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+index 6f5b2f764ad9..9e8a9f2ed765 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+@@ -1770,6 +1770,7 @@ int amdgpu_vm_handle_moved(struct amdgpu_device *adev,
+ 	int r;
+ 
+ 	amdgpu_vm_update_ctx_init(&update_ctx, adev, vm);
++retry:
+ 	list_for_each_entry_safe(bo_va, tmp, &vm->always_valid.needs_update,
+ 				 base.vm_status) {
+ 		/* Per VM BOs never need to bo cleared in the page tables */
+@@ -1822,6 +1823,16 @@ int amdgpu_vm_handle_moved(struct amdgpu_device *adev,
+ 	}
+ 	spin_unlock(&vm->individual_lock);
+ 
++	/*
++	 * If something new got added to the moved/invalidated lists while we
++	 * were handling updates for the existing entries, retry. This can happen
++	 * if PT allocation ends up evicting one of the buffers included in command
++	 * submissions.
++	 */
++	if (!list_empty(&vm->always_valid.needs_update) ||
++	    !list_empty(&vm->individual.needs_update))
++		goto retry;
++
+ error:
+ 	amdgpu_vm_update_ctx_fini(&update_ctx);
+ 
+-- 
+2.55.0
+

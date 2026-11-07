@@ -1,0 +1,203 @@
+From 849ff8f117244ac3864a1adb1d973dbe7b5c6a39 Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Sun, 12 Jul 2026 11:45:01 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: 8922d: add TX time limit for
+ 2GHz band
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Fix 2.4GHz specific L-SIG length TX issue, causing interoperability problem
+with certain APs. Limit the A-MPDU duration to be workaround.
+
+For 8922DE, the MAC limit is 164 ticks, and BB limit is 4608 us. The
+conversion is 32.768us / tick. Since smaller limit should be adopted,
+BB limit is filled into newly added field.
+
+The units of register and CCTL table are tick and us/512 respectively.
+Convert to target unit when filling values.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260712034506.53209-4-pkshih@realtek.com
+(cherry picked from commit b9f582e939f6777df5b11d3c99549fec60737644)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/core.h     |  1 +
+ drivers/net/wireless/realtek/rtw89/mac.c      | 20 +++++++++++++++++--
+ drivers/net/wireless/realtek/rtw89/rtw8851b.c |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8852a.c |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8852b.c |  1 +
+ .../net/wireless/realtek/rtw89/rtw8852bt.c    |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8852c.c |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8922a.c |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8922d.c |  9 +++++++++
+ 9 files changed, 34 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index 113a3799bfd3..21fed2ae7f5b 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -5418,6 +5418,7 @@ struct rtw89_chip_info {
+ 	const struct wiphy_wowlan_support *wowlan_stub;
+ 	const struct rtw89_xtal_info *xtal_info;
+ 	unsigned long default_quirks; /* bitmap of rtw89_quirks */
++	u16 txtime_limit_2ghz;
+ };
+ 
+ struct rtw89_chip_variant {
+diff --git a/drivers/net/wireless/realtek/rtw89/mac.c b/drivers/net/wireless/realtek/rtw89/mac.c
+index 3e06a0bdf7e9..d8f0add7e1b0 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac.c
++++ b/drivers/net/wireless/realtek/rtw89/mac.c
+@@ -7050,11 +7050,23 @@ __rtw89_mac_set_tx_time(struct rtw89_dev *rtwdev, struct rtw89_sta_link *rtwsta_
+ {
+ #define MAC_AX_DFLT_TX_TIME 5280
+ 	const struct rtw89_mac_gen_def *mac = rtwdev->chip->mac_def;
++	const struct rtw89_chip_info *chip = rtwdev->chip;
+ 	u8 mac_idx = rtwsta_link->rtwvif_link->mac_idx;
+ 	u32 max_tx_time = tx_time == 0 ? MAC_AX_DFLT_TX_TIME : tx_time;
++	struct rtw89_entity_conf conf;
++	const struct rtw89_chan *chan;
+ 	u32 reg;
+ 	int ret = 0;
+ 
++	if (chip->txtime_limit_2ghz) {
++		rtw89_entity_get_conf(rtwdev, &conf);
++		chan = conf.chans[mac_idx];
++
++		if (chan->band_type == RTW89_BAND_2G)
++			max_tx_time = min_t(u32, max_tx_time,
++					    chip->txtime_limit_2ghz);
++	}
++
+ 	if (rtwsta_link->cctl_tx_time) {
+ 		rtwsta_link->ampdu_max_time = (max_tx_time - 512) >> 9;
+ 		ret = rtw89_chip_h2c_txtime_cmac_tbl(rtwdev, rtwsta_link);
+@@ -7065,9 +7077,13 @@ __rtw89_mac_set_tx_time(struct rtw89_dev *rtwdev, struct rtw89_sta_link *rtwsta_
+ 			return ret;
+ 		}
+ 
++		if (chip->chip_gen == RTW89_CHIP_AX)
++			max_tx_time >>= 5;
++		else
++			max_tx_time = max_tx_time * 1000 >> 15;
++
+ 		reg = rtw89_mac_reg_by_idx(rtwdev, mac->agg_limit.addr, mac_idx);
+-		rtw89_write32_mask(rtwdev, reg, mac->agg_limit.mask,
+-				   max_tx_time >> 5);
++		rtw89_write32_mask(rtwdev, reg, mac->agg_limit.mask, max_tx_time);
+ 	}
+ 
+ 	return ret;
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8851b.c b/drivers/net/wireless/realtek/rtw89/rtw8851b.c
+index 91d6cddc713e..35ca38fa30e8 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8851b.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8851b.c
+@@ -2780,6 +2780,7 @@ const struct rtw89_chip_info rtw8851b_chip_info = {
+ #endif
+ 	.xtal_info		= &rtw8851b_xtal_info,
+ 	.default_quirks		= 0,
++	.txtime_limit_2ghz	= 0,
+ };
+ EXPORT_SYMBOL(rtw8851b_chip_info);
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852a.c b/drivers/net/wireless/realtek/rtw89/rtw8852a.c
+index ed6dee63694f..f32c7c6a4075 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852a.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852a.c
+@@ -2518,6 +2518,7 @@ const struct rtw89_chip_info rtw8852a_chip_info = {
+ #endif
+ 	.xtal_info		= &rtw8852a_xtal_info,
+ 	.default_quirks		= 0,
++	.txtime_limit_2ghz	= 0,
+ };
+ EXPORT_SYMBOL(rtw8852a_chip_info);
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852b.c b/drivers/net/wireless/realtek/rtw89/rtw8852b.c
+index 4f55a153d169..a45f05309af8 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852b.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852b.c
+@@ -1116,6 +1116,7 @@ const struct rtw89_chip_info rtw8852b_chip_info = {
+ #endif
+ 	.xtal_info		= NULL,
+ 	.default_quirks		= 0,
++	.txtime_limit_2ghz	= 0,
+ };
+ EXPORT_SYMBOL(rtw8852b_chip_info);
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852bt.c b/drivers/net/wireless/realtek/rtw89/rtw8852bt.c
+index 9e0c48fde2fa..8d5dd93626b3 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852bt.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852bt.c
+@@ -952,6 +952,7 @@ const struct rtw89_chip_info rtw8852bt_chip_info = {
+ #endif
+ 	.xtal_info		= NULL,
+ 	.default_quirks		= 0,
++	.txtime_limit_2ghz	= 0,
+ };
+ EXPORT_SYMBOL(rtw8852bt_chip_info);
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852c.c b/drivers/net/wireless/realtek/rtw89/rtw8852c.c
+index f21dd87e3846..89c8b0d7a554 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852c.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852c.c
+@@ -3321,6 +3321,7 @@ const struct rtw89_chip_info rtw8852c_chip_info = {
+ #endif
+ 	.xtal_info		= NULL,
+ 	.default_quirks		= 0,
++	.txtime_limit_2ghz	= 0,
+ };
+ EXPORT_SYMBOL(rtw8852c_chip_info);
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922a.c b/drivers/net/wireless/realtek/rtw89/rtw8922a.c
+index cdcce091b922..030866080cbd 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922a.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922a.c
+@@ -3303,6 +3303,7 @@ const struct rtw89_chip_info rtw8922a_chip_info = {
+ #endif
+ 	.xtal_info		= NULL,
+ 	.default_quirks		= 0,
++	.txtime_limit_2ghz	= 0,
+ };
+ EXPORT_SYMBOL(rtw8922a_chip_info);
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922d.c b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+index c28670e82c3e..50a896c0cee9 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922d.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+@@ -1173,8 +1173,10 @@ static void rtw8922d_set_channel_mac(struct rtw89_dev *rtwdev,
+ 	u32 sub_carr = rtw89_mac_reg_by_idx(rtwdev, R_BE_TX_SUB_BAND_VALUE, mac_idx);
+ 	u32 chk_rate = rtw89_mac_reg_by_idx(rtwdev, R_BE_TXRATE_CHK, mac_idx);
+ 	u32 rf_mod = rtw89_mac_reg_by_idx(rtwdev, R_BE_WMAC_RFMOD, mac_idx);
++	const struct rtw89_chip_info *chip = rtwdev->chip;
+ 	u8 txsb20 = 0, txsb40 = 0, txsb80 = 0;
+ 	u8 rf_mod_val, chk_rate_mask, sifs;
++	u16 tx_time = AMPDU_MAX_TIME_V1;
+ 	u32 txsb;
+ 	u32 reg;
+ 
+@@ -1255,6 +1257,12 @@ static void rtw8922d_set_channel_mac(struct rtw89_dev *rtwdev,
+ 
+ 	reg = rtw89_mac_reg_by_idx(rtwdev, R_BE_MUEDCA_EN, mac_idx);
+ 	rtw89_write32_mask(rtwdev, reg, B_BE_SIFS_MACTXEN_TB_T1_DOT05US_MASK, sifs);
++
++	if (chan->band_type == RTW89_BAND_2G && chip->txtime_limit_2ghz)
++		tx_time = min_t(u32, tx_time, chip->txtime_limit_2ghz * 1000 >> 15);
++
++	reg = rtw89_mac_reg_by_idx(rtwdev, R_BE_AMPDU_AGG_LIMIT, mac_idx);
++	rtw89_write32_mask(rtwdev, reg, B_BE_AMPDU_MAX_TIME_MASK, tx_time);
+ }
+ 
+ static const u32 rtw8922d_sco_barker_threshold[14] = {
+@@ -3757,6 +3765,7 @@ const struct rtw89_chip_info rtw8922d_chip_info = {
+ #endif
+ 	.xtal_info		= NULL,
+ 	.default_quirks		= BIT(RTW89_QUIRK_THERMAL_PROT_120C),
++	.txtime_limit_2ghz	= 4608,
+ };
+ EXPORT_SYMBOL(rtw8922d_chip_info);
+ 
+-- 
+2.55.0
+

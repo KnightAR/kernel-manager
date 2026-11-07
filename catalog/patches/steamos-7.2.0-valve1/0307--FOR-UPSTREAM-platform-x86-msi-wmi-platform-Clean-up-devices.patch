@@ -1,0 +1,125 @@
+From 0a043964487aa5988bd6464f81053100f29a4849 Mon Sep 17 00:00:00 2001
+From: "Derek J. Clark" <derekjohn.clark@gmail.com>
+Date: Wed, 22 Jul 2026 17:58:41 -0700
+Subject: [PATCH] [FOR-UPSTREAM] platform/x86: msi-wmi-platform: Clean up
+ devices
+
+The current driver has multiple minor mistakes. Fix them all in one
+cleanup patch.
+
+- Device names are inconsistent/incorrect for the quirk table
+- Per the Windows DLL, PL2 must always be at least 1W higher than
+  PL1. Give PL1 and PL2 different minimum values.
+- Copy buffer before write to ensure payload is sent instead of stale
+  data
+
+Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/platform/x86/msi-wmi-platform.c | 24 ++++++++++++------------
+ 1 file changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/platform/x86/msi-wmi-platform.c b/drivers/platform/x86/msi-wmi-platform.c
+index 6a19e0c45de2..5f0df771c0b9 100644
+--- a/drivers/platform/x86/msi-wmi-platform.c
++++ b/drivers/platform/x86/msi-wmi-platform.c
+@@ -124,8 +124,9 @@ struct msi_wmi_platform_quirk {
+ 	bool charge_threshold;	/* Charge threshold is supported */
+ 	bool dual_fans;		/* For devices with two hwmon fans */
+ 	bool restore_curves;	/* Restore factory curves on unload */
+-	int pl_min;		/* Minimum PLx value */
++	int pl1_min;		/* Minimum PL1 value */
+ 	int pl1_max;		/* Maximum PL1 value */
++	int pl2_min;		/* Minimum PL2 value */
+ 	int pl2_max;		/* Maximum PL2 value */
+ };
+ 
+@@ -229,8 +230,9 @@ static struct msi_wmi_platform_quirk quirk_gen1 = {
+ 	.charge_threshold = true,
+ 	.dual_fans = true,
+ 	.restore_curves = true,
+-	.pl_min = 8,
++	.pl1_min = 8,
+ 	.pl1_max = 43,
++	.pl2_min = 9,
+ 	.pl2_max = 45
+ };
+ static struct msi_wmi_platform_quirk quirk_gen2 = {
+@@ -238,8 +240,9 @@ static struct msi_wmi_platform_quirk quirk_gen2 = {
+ 	.charge_threshold = true,
+ 	.dual_fans = true,
+ 	.restore_curves = true,
+-	.pl_min = 8,
++	.pl1_min = 8,
+ 	.pl1_max = 30,
++	.pl2_min = 9,
+ 	.pl2_max = 37
+ };
+ static struct msi_wmi_platform_quirk quirk_gen3 = {
+@@ -251,7 +254,7 @@ static struct msi_wmi_platform_quirk quirk_gen3 = {
+ 
+ static const struct dmi_system_id msi_quirks[] = {
+ 	{
+-		.ident = "MSI Claw (gen 1)",
++		.ident = "MSI Claw A1M",
+ 		.matches = {
+ 			DMI_MATCH(DMI_SYS_VENDOR, "Micro-Star International Co., Ltd."),
+ 			DMI_MATCH(DMI_BOARD_NAME, "MS-1T41"),
+@@ -259,7 +262,7 @@ static const struct dmi_system_id msi_quirks[] = {
+ 		.driver_data = &quirk_gen1,
+ 	},
+ 	{
+-		.ident = "MSI Claw AI+ 7",
++		.ident = "MSI Claw 7 AI+ A2VM",
+ 		.matches = {
+ 			DMI_MATCH(DMI_SYS_VENDOR, "Micro-Star International Co., Ltd."),
+ 			DMI_MATCH(DMI_BOARD_NAME, "MS-1T42"),
+@@ -267,7 +270,7 @@ static const struct dmi_system_id msi_quirks[] = {
+ 		.driver_data = &quirk_gen2,
+ 	},
+ 	{
+-		.ident = "MSI Claw AI+ 8",
++		.ident = "MSI Claw 8 AI+ A2VM",
+ 		.matches = {
+ 			DMI_MATCH(DMI_SYS_VENDOR, "Micro-Star International Co., Ltd."),
+ 			DMI_MATCH(DMI_BOARD_NAME, "MS-1T52"),
+@@ -1145,7 +1148,7 @@ static int msi_wmi_fw_attrs_init(struct msi_wmi_platform_data *data)
+ 
+ 	if (data->quirks->pl1_max) {
+ 		err = msi_fw_attr_init(data, MSI_ATTR_PPT_PL1_SPL,
+-					&fw_attr_type_int, data->quirks->pl_min,
++					&fw_attr_type_int, data->quirks->pl1_min,
+ 					data->quirks->pl1_max, &data_get_value,
+ 					&data_set_value);
+ 		if (err)
+@@ -1154,7 +1157,7 @@ static int msi_wmi_fw_attrs_init(struct msi_wmi_platform_data *data)
+ 
+ 	if (data->quirks->pl2_max) {
+ 		err = msi_fw_attr_init(data, MSI_ATTR_PPT_PL2_SPPT,
+-				       &fw_attr_type_int, data->quirks->pl_min,
++				       &fw_attr_type_int, data->quirks->pl2_min,
+ 				       data->quirks->pl2_max, &data_get_value,
+ 				       &data_set_value);
+ 		if (err)
+@@ -1273,6 +1276,7 @@ static ssize_t msi_wmi_platform_debugfs_write(struct file *fp, const char __user
+ 		return ret;
+ 
+ 	down_write(&data->buffer_lock);
++	memcpy(data->buffer, payload, data->length);
+ 	ret = msi_wmi_platform_query(data->data, data->method, data->buffer,
+ 				     data->length);
+ 	up_write(&data->buffer_lock);
+@@ -1280,10 +1284,6 @@ static ssize_t msi_wmi_platform_debugfs_write(struct file *fp, const char __user
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	down_write(&data->buffer_lock);
+-	memcpy(data->buffer, payload, data->length);
+-	up_write(&data->buffer_lock);
+-
+ 	return length;
+ }
+ 
+-- 
+2.55.0
+

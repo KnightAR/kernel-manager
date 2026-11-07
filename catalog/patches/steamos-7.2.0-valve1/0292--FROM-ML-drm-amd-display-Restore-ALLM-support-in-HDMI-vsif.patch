@@ -1,0 +1,283 @@
+From 1d74478a8128d0cdce9c2f37d58b646851f8ffe7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Tomasz=20Paku=C5=82a?= <tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 16 Feb 2026 17:45:07 +0100
+Subject: [PATCH] [FROM-ML] drm/amd/display: Restore ALLM support in HDMI vsif
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+[Why]
+Support for triggering ALLM in modern TVs is missing.
+
+When HDMI vsif was added in 2019:
+commit 3c2381b92cba ("drm/amd/display: add support for VSIP info packet")
+it was improperly handeled as HDMI actually has two separate vsifs. The
+implementation was based on H14b-vsif and ALLM bit was messing it up
+because H14b-vsif doesn't support ALLM. It was later removed in:
+commit 75f77aafe281 ("drm/amd/display: Send H14b-VSIF specified in HDMI")
+
+ALLM is supported by hf-vsif (HDMI Forum) instead.
+
+[How]
+Add proper logic to construct either h14b-vsif or hf-vsif based on
+required capabilities. Currently, only ALLM from hf-vsif is supported.
+
+Turns out, hf-vsif is almost identical to h14b-vsif, BUT has additional
+two bytes of data after OUI. First byte is static and seems like
+a version supported by leftover define. Second byte consists of 3D and
+ALLM bits.
+
+Implement logic to offset 3D data if building hf-vsif.
+
+Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
+Link: https://lore.kernel.org/r/20260216164516.36803-19-tomasz.pakula.oficjalny@gmail.com
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c |   2 +-
+ .../amd/display/modules/inc/mod_info_packet.h |   2 +-
+ .../display/modules/info_packet/info_packet.c | 153 +++++++-----------
+ 3 files changed, 62 insertions(+), 95 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+index 72ede213835d..df3fd4d2b437 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -7805,7 +7805,7 @@ create_stream_for_sink(struct drm_connector *connector,
+ 
+ 	if (stream->signal == SIGNAL_TYPE_HDMI_TYPE_A ||
+ 	    stream->signal == SIGNAL_TYPE_HDMI_FRL)
+-		mod_build_hf_vsif_infopacket(stream, &stream->hfvsif_infopacket, false, false);
++		mod_build_hf_vsif_infopacket(stream, &stream->hfvsif_infopacket);
+ 
+ 	if (stream->signal == SIGNAL_TYPE_DISPLAY_PORT ||
+ 	    stream->signal == SIGNAL_TYPE_DISPLAY_PORT_MST ||
+diff --git a/drivers/gpu/drm/amd/display/modules/inc/mod_info_packet.h b/drivers/gpu/drm/amd/display/modules/inc/mod_info_packet.h
+index f8afbf5cd84f..b648fb1d117b 100644
+--- a/drivers/gpu/drm/amd/display/modules/inc/mod_info_packet.h
++++ b/drivers/gpu/drm/amd/display/modules/inc/mod_info_packet.h
+@@ -48,7 +48,7 @@ void mod_build_vsc_infopacket(const struct dc_stream_state *stream,
+ 		enum color_transfer_func tf);
+ 
+ void mod_build_hf_vsif_infopacket(const struct dc_stream_state *stream,
+-		struct dc_info_packet *info_packet, int ALLMEnabled, int ALLMValue);
++		struct dc_info_packet *info_packet);
+ 
+ enum adaptive_sync_sdp_version {
+ 	AS_SDP_VER_0 = 0x0,
+diff --git a/drivers/gpu/drm/amd/display/modules/info_packet/info_packet.c b/drivers/gpu/drm/amd/display/modules/info_packet/info_packet.c
+index b161d9088c22..b2a39de3b585 100644
+--- a/drivers/gpu/drm/amd/display/modules/info_packet/info_packet.c
++++ b/drivers/gpu/drm/amd/display/modules/info_packet/info_packet.c
+@@ -49,7 +49,10 @@ enum vsc_packet_revision {
+ };
+ 
+ #define HDMI_INFOFRAME_TYPE_VENDOR 0x81
+-#define HF_VSIF_VERSION 1
++#define HDMI_INFOFRAME_LENGTH_MASK 0x1F
++#define HF_VSIF_VERSION  1
++#define HF_VSIF_3D_BIT   0
++#define HF_VSIF_ALLM_BIT 1
+ 
+ // VTEM Byte Offset
+ #define VTEM_PB0		0
+@@ -496,141 +499,105 @@ void mod_build_vsc_infopacket(const struct dc_stream_state *stream,
+ 	}
+ }
+ 
++static bool is_hdmi_vic_mode(const struct dc_stream_state *stream)
++{
++	if (stream->timing.hdmi_vic == 0)
++		return false;
++
++	if (stream->timing.h_total < 3840 ||
++	    stream->timing.v_total < 2160)
++		return false;
++
++	/* 3D/ALLM forces HDMI VIC -> CTA VIC translation */
++	if (stream->view_format != VIEW_3D_FORMAT_NONE)
++		return false;
++
++	if (stream->link->local_sink->edid_caps.allm)
++		return false;
++
++	return true;
++}
++
+ /**
+  *  mod_build_hf_vsif_infopacket - Prepare HDMI Vendor Specific info frame.
+  *                                 Follows HDMI Spec to build up Vendor Specific info frame
++ *                                 Conforms to h14b-vsif or hf-vsif based on the capabilities
+  *
+  *  @stream:      contains data we may need to construct VSIF (i.e. timing_3d_format, etc.)
+  *  @info_packet: output structure where to store VSIF
+- *  @ALLMEnabled: indicates whether ALLM HF-VSIF should be generated
+- *  @ALLMValue:   ALLM bit value to advertise in HF-VSIF
+  */
+ void mod_build_hf_vsif_infopacket(const struct dc_stream_state *stream,
+-		struct dc_info_packet *info_packet, int ALLMEnabled, int ALLMValue)
++		struct dc_info_packet *info_packet)
+ {
+-		unsigned int length = 5;
+ 		bool hdmi_vic_mode = false;
++		bool allm = false;
++		bool stereo = false;
+ 		uint8_t checksum = 0;
+-		uint32_t i = 0;
++		uint8_t offset = 0;
++		uint8_t i = 0;
++		uint8_t length = 5;
++		uint32_t oui = HDMI_IEEE_OUI;
+ 		enum dc_timing_3d_format format;
+-		bool bALLM = (bool)ALLMEnabled;
+-		bool bALLMVal = (bool)ALLMValue;
+-		int CCBPC = 0;
+ 
+ 		info_packet->valid = false;
++
+ 		format = stream->timing.timing_3d_format;
+ 		if (stream->view_format == VIEW_3D_FORMAT_NONE)
+ 			format = TIMING_3D_FORMAT_NONE;
++		stereo = format != TIMING_3D_FORMAT_NONE;
++		hdmi_vic_mode = is_hdmi_vic_mode(stream);
+ 
+-		if (stream->timing.hdmi_vic != 0
+-				&& stream->timing.h_total >= 3840
+-				&& stream->timing.v_total >= 2160
+-				&& format == TIMING_3D_FORMAT_NONE)
+-			hdmi_vic_mode = true;
+-
+-		if ((format == TIMING_3D_FORMAT_NONE) && !hdmi_vic_mode && !bALLM)
++		if (!stereo && !hdmi_vic_mode && !allm)
+ 			return;
+ 
+-		if (!bALLM) {
+-			info_packet->sb[1] = 0x03;
+-			info_packet->sb[2] = 0x0C;
+-			info_packet->sb[3] = 0x00;
++		if (allm)
++			oui = HDMI_FORUM_IEEE_OUI;
++
++		info_packet->sb[1] = oui & 0xFF;
++		info_packet->sb[2] = (oui >> 8) & 0xFF;
++		info_packet->sb[3] = (oui >> 16) & 0xFF;
++
++		if (oui == HDMI_FORUM_IEEE_OUI) {
++			offset = 2;
++			length += 2;
++			info_packet->sb[4] = HF_VSIF_VERSION;
++			info_packet->sb[5] = stereo << HF_VSIF_3D_BIT;
++			info_packet->sb[5] |= allm << HF_VSIF_ALLM_BIT;
++		}
+ 
+-			if (format != TIMING_3D_FORMAT_NONE)
+-				info_packet->sb[4] = (2 << 5);
+-			else if (hdmi_vic_mode)
+-				info_packet->sb[4] = (1 << 5);
++		if (stereo) {
++			info_packet->sb[4 + offset] = (2 << 5);
+ 
+ 			switch (format) {
+ 			case TIMING_3D_FORMAT_HW_FRAME_PACKING:
+ 			case TIMING_3D_FORMAT_SW_FRAME_PACKING:
+-				info_packet->sb[5] = (0x0 << 4);
++				info_packet->sb[5 + offset] = (0x0 << 4);
+ 				break;
+ 
+ 			case TIMING_3D_FORMAT_SIDE_BY_SIDE:
+ 			case TIMING_3D_FORMAT_SBS_SW_PACKED:
+-				info_packet->sb[5] = (0x8 << 4);
+-				length = 6;
++				info_packet->sb[5 + offset] = (0x8 << 4);
++				++length;
+ 				break;
+ 
+ 			case TIMING_3D_FORMAT_TOP_AND_BOTTOM:
+ 			case TIMING_3D_FORMAT_TB_SW_PACKED:
+-				info_packet->sb[5] = (0x6 << 4);
++				info_packet->sb[5 + offset] = (0x6 << 4);
+ 				break;
+ 
+ 			default:
+ 				break;
+ 			}
+ 
+-			if (hdmi_vic_mode) {
+-				ASSERT(stream->timing.hdmi_vic <= 0xFF);
+-				info_packet->sb[5] = (uint8_t)stream->timing.hdmi_vic;
+-			}
+-		} else {
+-			info_packet->sb[1] = 0xD8;
+-			info_packet->sb[2] = 0x5D;
+-			info_packet->sb[3] = 0xC4;
+-			info_packet->sb[4] = HF_VSIF_VERSION;
+-
+-			if (format != TIMING_3D_FORMAT_NONE) {
+-				info_packet->sb[5] |= 0x01;
+-				length = 6;
+-				switch (format) {
+-				case TIMING_3D_FORMAT_HW_FRAME_PACKING:
+-				case TIMING_3D_FORMAT_SW_FRAME_PACKING:
+-					info_packet->sb[6] = (0x0 << 4);
+-					break;
+-
+-				case TIMING_3D_FORMAT_SIDE_BY_SIDE:
+-				case TIMING_3D_FORMAT_SBS_SW_PACKED:
+-					info_packet->sb[6] = (0x8 << 4);
+-					break;
+-
+-				case TIMING_3D_FORMAT_TOP_AND_BOTTOM:
+-				case TIMING_3D_FORMAT_TB_SW_PACKED:
+-					info_packet->sb[6] = (0x6 << 4);
+-					break;
+-
+-				default:
+-					break;
+-				}
+-			}
+-
+-			info_packet->sb[5] = (info_packet->sb[5] & ~0x02) | (bALLMVal << 1);
+-
+-			switch (stream->timing.display_color_depth) {
+-			case COLOR_DEPTH_888:
+-				CCBPC = 1;
+-				break;
+-			case COLOR_DEPTH_101010:
+-				CCBPC = 3;
+-				break;
+-			case COLOR_DEPTH_121212:
+-				CCBPC = 5;
+-				break;
+-			case COLOR_DEPTH_161616:
+-				CCBPC = 9;
+-				break;
+-
+-			case COLOR_DEPTH_UNDEFINED:
+-			case COLOR_DEPTH_666:
+-#ifdef CONFIG_DRM_AMD_DC_DCN2_0
+-			case COLOR_DEPTH_999:
+-			case COLOR_DEPTH_111111:
+-#endif
+-			case COLOR_DEPTH_141414:
+-			default:
+-				break;
+-			}
+-
+-			info_packet->sb[5] = (uint8_t)((info_packet->sb[5] & ~0xF0) | (CCBPC << 4));
++		/* Doesn't need the offset as it can't be used with hf-vsif */
++		} else if (hdmi_vic_mode) {
++			info_packet->sb[4] = (1 << 5);
++			info_packet->sb[5] = stream->timing.hdmi_vic;
+ 		}
+ 
+ 		info_packet->hb0 = HDMI_INFOFRAME_TYPE_VENDOR;
+ 		info_packet->hb1 = 0x01;
+-		info_packet->hb2 = (uint8_t) (length);
+-
+-
++		info_packet->hb2 = length & HDMI_INFOFRAME_LENGTH_MASK;
+ 
+ 		checksum += info_packet->hb0;
+ 		checksum += info_packet->hb1;
+-- 
+2.55.0
+

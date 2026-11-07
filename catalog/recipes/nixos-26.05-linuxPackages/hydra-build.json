@@ -1,0 +1,60 @@
+{
+  "releasename": null,
+  "finished": 1,
+  "buildstatus": 0,
+  "buildmetrics": {},
+  "stoptime": 1788418009,
+  "buildoutputs": {
+    "modules": {
+      "path": "/nix/store/5x8s3iwbcgg2daiqcvfldkiyc8b3b22c-linux-6.18.49-modules"
+    },
+    "out": {
+      "path": "/nix/store/q0l4jdiipfm38m9xd5gra3yv3b6mzm03-linux-6.18.49"
+    },
+    "dev": {
+      "path": "/nix/store/bj3961gkikxlkc8smfi0qlg8wb3b4gj4-linux-6.18.49-dev"
+    }
+  },
+  "drvpath": "/nix/store/y55a9imaixb6mklc2iwhm00m2c6zpw4b-linux-6.18.49.drv",
+  "project": "nixos",
+  "id": 344273474,
+  "nixname": "linux-6.18.49",
+  "jobsetevals": [
+    1828759
+  ],
+  "buildproducts": {
+    "1": {
+      "sha256hash": null,
+      "name": "linux-6.18.49-modules",
+      "subtype": "modules",
+      "type": "nix-build",
+      "defaultpath": "",
+      "filesize": null,
+      "path": "/nix/store/5x8s3iwbcgg2daiqcvfldkiyc8b3b22c-linux-6.18.49-modules"
+    },
+    "2": {
+      "defaultpath": "",
+      "filesize": null,
+      "path": "/nix/store/q0l4jdiipfm38m9xd5gra3yv3b6mzm03-linux-6.18.49",
+      "sha256hash": null,
+      "name": "linux-6.18.49",
+      "subtype": "",
+      "type": "nix-build"
+    },
+    "3": {
+      "sha256hash": null,
+      "type": "nix-build",
+      "subtype": "dev",
+      "name": "linux-6.18.49-dev",
+      "defaultpath": "",
+      "path": "/nix/store/bj3961gkikxlkc8smfi0qlg8wb3b4gj4-linux-6.18.49-dev",
+      "filesize": null
+    }
+  },
+  "timestamp": 1788416215,
+  "starttime": 1788418009,
+  "system": "x86_64-linux",
+  "job": "nixpkgs.linuxPackages.kernel.x86_64-linux",
+  "priority": 100,
+  "jobset": "release-26.05"
+}

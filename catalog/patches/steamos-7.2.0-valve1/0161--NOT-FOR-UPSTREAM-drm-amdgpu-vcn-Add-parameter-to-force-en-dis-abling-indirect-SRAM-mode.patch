@@ -1,0 +1,97 @@
+From ca834df943c136a6600c3102416f43ca5483ba5e Mon Sep 17 00:00:00 2001
+From: "Guilherme G. Piccoli" <gpiccoli@igalia.com>
+Date: Mon, 16 Jan 2023 16:09:47 -0300
+Subject: [PATCH] [NOT-FOR-UPSTREAM] drm/amdgpu/vcn: Add parameter to force
+ (en/dis)abling indirect SRAM mode
+
+Currently the FW loading path perform some checks based on IP model
+and in case it is advertised as supported, the VCN indirect SRAM
+mode is used.
+
+Happens that in case there's any issue on FW and this mode ends-up
+not being properly supported, the driver probe fails [0]. Debugging
+this requires driver rebuilding, so to allow fast debug and experiments,
+add a parameter to force setting indirect SRAM mode to true/false from
+the kernel command-line; parameter default is -1, which doesn't change
+the current driver's behavior.
+
+[0] Example of this issue, observed on Steam Deck:
+
+[drm] kiq ring mec 2 pipe 1 q 0
+[drm] failed to load ucode VCN0_RAM(0x3A)
+[drm] psp gfx command LOAD_IP_FW(0x6) failed and response status is (0xFFFF0000)
+amdgpu 0000:04:00.0: [drm:amdgpu_ring_test_helper [amdgpu]] *ERROR* ring vcn_dec_0 test failed (-110)
+[drm:amdgpu_device_init.cold [amdgpu]] *ERROR* hw_init of IP block <vcn_v3_0> failed -110
+amdgpu 0000:04:00.0: amdgpu: amdgpu_device_ip_init failed
+amdgpu 0000:04:00.0: amdgpu: Fatal error during GPU init
+
+Signed-off-by: Guilherme G. Piccoli <gpiccoli@igalia.com>
+[added warning message to help with debugging; fwd-ported to v6.8]
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Robert Beckett <bob.beckett@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu.h     | 1 +
+ drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c | 9 +++++++++
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vcn.c | 6 ++++++
+ 3 files changed, 16 insertions(+)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu.h b/drivers/gpu/drm/amd/amdgpu/amdgpu.h
+index 5224bd3dc91e..77252a62728d 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu.h
+@@ -229,6 +229,7 @@ extern int amdgpu_smartshift_bias;
+ extern int amdgpu_use_xgmi_p2p;
+ extern int amdgpu_mtype_local;
+ extern int amdgpu_enforce_isolation;
++extern int amdgpu_indirect_sram;
+ #ifdef CONFIG_HSA_AMD
+ extern int sched_policy;
+ extern bool debug_evictions;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+index be906d9ded97..3722c302ee73 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+@@ -237,6 +237,7 @@ int amdgpu_use_xgmi_p2p = 1;
+ int amdgpu_vcnfw_log;
+ int amdgpu_sg_display = -1; /* auto */
+ int amdgpu_user_partt_mode = AMDGPU_AUTO_COMPUTE_PARTITION_MODE;
++int amdgpu_indirect_sram = -1;
+ int amdgpu_umsch_mm;
+ int amdgpu_seamless = -1; /* auto */
+ uint amdgpu_debug_mask;
+@@ -1015,6 +1016,14 @@ MODULE_PARM_DESC(smu_pptable_id,
+ 	"specify pptable id to be used (-1 = auto(default) value, 0 = use pptable from vbios, > 0 = soft pptable id)");
+ module_param_named(smu_pptable_id, amdgpu_smu_pptable_id, int, 0444);
+ 
++/**
++ * DOC: indirect_sram (int)
++ * Allow users to force using (or not) the VCN indirect SRAM mode in the fw load
++ * code. Default is -1, meaning auto (aka, don't mess with driver's behavior).
++ */
++MODULE_PARM_DESC(indirect_sram, "Force VCN indirect SRAM (-1 = auto (default), 0 = disabled, 1 = enabled)");
++module_param_named(indirect_sram, amdgpu_indirect_sram, int, 0444);
++
+ /**
+  * DOC: partition_mode (int)
+  * Used to override the default SPX mode.
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vcn.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vcn.c
+index 616967519869..d5446ccf3243 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vcn.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vcn.c
+@@ -166,6 +166,12 @@ int amdgpu_vcn_sw_init(struct amdgpu_device *adev, int i)
+ 		}
+ 	}
+ 
++	if (amdgpu_indirect_sram >= 0) {
++		adev->vcn.inst[i].indirect_sram = (bool)amdgpu_indirect_sram;
++		dev_warn(adev->dev, "Forcibly set indirect SRAM status to: %d\n",
++			 amdgpu_indirect_sram);
++	}
++
+ 	/* from vcn4 and above, only unified queue is used */
+ 	adev->vcn.inst[i].using_unified_queue =
+ 		amdgpu_ip_version(adev, UVD_HWIP, 0) >= IP_VERSION(4, 0, 0);
+-- 
+2.55.0
+

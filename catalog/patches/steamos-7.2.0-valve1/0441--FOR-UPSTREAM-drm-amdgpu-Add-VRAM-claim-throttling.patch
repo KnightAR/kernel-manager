@@ -1,0 +1,167 @@
+From 6cbf8fd3ff8b79b30f3804b1b27ce579b504244b Mon Sep 17 00:00:00 2001
+From: Natalie Vock <natalie.vock@gmx.de>
+Date: Sat, 20 Jun 2026 11:05:11 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/amdgpu: Add VRAM claim throttling
+
+If someone else is trying to evict from a submitting process, things
+can end up in rather nasty cycles of eviction, where A continuously
+evicts from B, only for B to move everything back in at the cost of A's
+memrory. Throttle claiming cgroup-protected memory to break such
+pathological eviction loops.
+
+Throttling happens per VM using two timeouts: "hard" throttling timeout
+and "soft" throttling timeout. The idea is that once a VM notices a
+different VM trying to evict its memory, it pulls the emergency stop and
+only moves things into VRAM that are strictly necessary for
+functionality. This avoids cycles where one VM constantly evicts a
+buffer that another one moves back in. Progress will *eventually*
+happen, but typically performance goes down the drain from this.
+
+After the hard throttling timeout expires, we enter soft throttling
+until its respective timeout expires. Under soft throttling, we're still
+careful if any VM is still evicting from us, but we try claiming back
+some VRAM that was stolen from us if it's free. If possible, we still
+avoid evicting other apps, so that we don't go right back to square one.
+
+Throttling is engaged when one of two conditions are met:
+1. The VM is evicted from. In that case, assume the evicting VM might be
+   even more hungry for memory. cgroup protection makes sure that the VM
+   is only evicted from by VMs that are entitled to that memory, so
+   there is no use in trying to fight it.
+2. We tried evicting for our own buffers and failed. In this case, we
+   reached a more or less steady state, and trying again is unlikely to
+   change anything.
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c | 21 +++++++++++++++++++++
+ drivers/gpu/drm/amd/amdgpu/amdgpu_cs.h |  3 +++
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c |  2 ++
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h |  7 +++++++
+ 4 files changed, 33 insertions(+)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c
+index 6fe164782c5a..2620524022de 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.c
+@@ -822,6 +822,8 @@ static int amdgpu_cs_bo_validate(void *param, struct amdgpu_bo *bo)
+ 	struct ttm_operation_ctx ctx = {
+ 		.interruptible = true,
+ 		.no_wait_gpu = false,
++		.cgroup_throttle = p->num_unsuccessful_evicts > 0 ||
++				   p->vm_eviction_throttle_soft,
+ 		.exec = &p->exec,
+ 	};
+ 	struct amdgpu_fpriv *fpriv = p->filp->driver_priv;
+@@ -838,6 +840,9 @@ static int amdgpu_cs_bo_validate(void *param, struct amdgpu_bo *bo)
+ 		amdgpu_mem_type_to_domain(bo->tbo.resource->mem_type) &
+ 			bo->allowed_domains;
+ 
++	if (p->vm_eviction_throttle_hard && in_allowed_domains)
++		return 0;
++
+ 	if (amdgpu_vm_is_bo_always_valid(&fpriv->vm, bo) &&
+ 	    bo->tbo.type != ttm_bo_type_kernel) {
+ 		ctx.allow_bulk_evict = true;
+@@ -875,6 +880,7 @@ static int amdgpu_cs_bo_validate(void *param, struct amdgpu_bo *bo)
+ retry:
+ 	amdgpu_bo_placement_from_domain(bo, domain);
+ 	r = ttm_bo_validate(&bo->tbo, &bo->placement, &ctx);
++	p->num_unsuccessful_evicts += ctx.unsuccessful_evicts;
+ 
+ 	p->bytes_moved += ctx.bytes_moved;
+ 	if (!amdgpu_gmc_vram_full_visible(&adev->gmc) &&
+@@ -898,6 +904,7 @@ static int amdgpu_cs_parser_bos(struct amdgpu_cs_parser *p,
+ 	struct amdgpu_vm *vm = &fpriv->vm;
+ 	struct amdgpu_bo_list_entry *e;
+ 	struct drm_gem_object *obj;
++	u64 us_since_eviction_throttle;
+ 	unsigned int i;
+ 	int r;
+ 
+@@ -954,6 +961,14 @@ static int amdgpu_cs_parser_bos(struct amdgpu_cs_parser *p,
+ 		if (unlikely(r))
+ 			goto out_free_user_pages;
+ 
++		us_since_eviction_throttle =
++			ktime_to_us(ktime_get()) -
++			READ_ONCE(fpriv->vm.last_evict_throttle_start_us);
++		p->vm_eviction_throttle_soft = us_since_eviction_throttle <=
++					       VM_EVICT_THROTTLE_SOFT_TIMEOUT;
++		p->vm_eviction_throttle_hard = us_since_eviction_throttle <=
++					       VM_EVICT_THROTTLE_HARD_TIMEOUT;
++
+ 		amdgpu_bo_list_for_each_entry(e, p->bo_list) {
+ 			r = drm_exec_prepare_obj(&p->exec, &e->bo->tbo.base,
+ 						 TTM_NUM_MOVE_FENCES + p->gang_size);
+@@ -1417,8 +1432,14 @@ static void amdgpu_cs_parser_fini(struct amdgpu_cs_parser *parser)
+ {
+ 	struct amdgpu_device *adev = parser->adev;
+ 	struct amdgpu_bo_list_entry *e;
++	struct amdgpu_fpriv *fpriv = parser->filp->driver_priv;
+ 	unsigned int i;
+ 
++	if (parser->num_unsuccessful_evicts) {
++		WRITE_ONCE(fpriv->vm.last_evict_throttle_start_us,
++			   ktime_to_us(ktime_get()));
++	}
++
+ 	amdgpu_sync_free(&parser->sync);
+ 	drm_exec_fini(&parser->exec);
+ 
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.h b/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.h
+index 39c33ad100cb..de3defe72a41 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_cs.h
+@@ -71,6 +71,9 @@ struct amdgpu_cs_parser {
+ 	uint64_t			bytes_moved_vis_threshold;
+ 	uint64_t			bytes_moved;
+ 	uint64_t			bytes_moved_vis;
++	uint32_t			num_unsuccessful_evicts;
++	bool				vm_eviction_throttle_soft;
++	bool				vm_eviction_throttle_hard;
+ 
+ 	/* user fence */
+ 	struct amdgpu_bo		*uf_bo;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+index 387df30565b4..1008ae0d4b7a 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.c
+@@ -2678,6 +2678,8 @@ int amdgpu_vm_init(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+ 	vm->use_cpu_for_update = !!(adev->vm_manager.vm_update_mode &
+ 				    AMDGPU_VM_USE_CPU_FOR_GFX);
+ 
++	vm->last_evict_throttle_start_us = 0;
++
+ 	dev_dbg(adev->dev, "VM update mode is %s\n",
+ 		vm->use_cpu_for_update ? "CPU" : "SDMA");
+ 	WARN_ONCE((vm->use_cpu_for_update &&
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+index 2b344298ada8..6824be050482 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vm.h
+@@ -358,6 +358,11 @@ struct amdgpu_mem_stats {
+ 	uint64_t evicted;
+ };
+ 
++/* TODO: Make these module parameters? */
++#define VM_EVICT_THROTTLE_SOFT_ALLOWED_DEADLOCKS 4
++#define VM_EVICT_THROTTLE_SOFT_TIMEOUT 200000
++#define VM_EVICT_THROTTLE_HARD_TIMEOUT 50000
++
+ struct amdgpu_vm {
+ 	/* tree of virtual addresses mapped */
+ 	struct rb_root_cached	va;
+@@ -375,6 +380,8 @@ struct amdgpu_vm {
+ 
+ 	/* BO's belonging to PD/PT which are internal to the kernel. */
+ 	struct amdgpu_vm_bo_status	kernel;
++	/* Timestamp for tracking when to throttle VM allocations. */
++	u64			last_evict_throttle_start_us;
+ 
+ 	/*
+ 	 * BOs allocated by userspace where the dma_resv is shared with the
+-- 
+2.55.0
+

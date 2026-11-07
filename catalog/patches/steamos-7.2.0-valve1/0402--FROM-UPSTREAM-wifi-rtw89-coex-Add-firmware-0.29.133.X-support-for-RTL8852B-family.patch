@@ -1,0 +1,78 @@
+From 833ff7a2d4459bc312d4488913980e7241fd8ec1 Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Fri, 17 Jul 2026 14:57:34 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Add firmware 0.29.133.X
+ support for RTL8852B family
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The new firmware modified GPIO setup structure format for third party
+chip set I/O control & offloaded Wi-Fi TRX status to firmware for training
+traffic RF-Parameters & TDMA mechanism.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260717065739.64124-9-pkshih@realtek.com
+(cherry picked from commit 58b1bde3712e74ead009b21c707f409b121ea51c)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/coex.c | 27 +++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/coex.c b/drivers/net/wireless/realtek/rtw89/coex.c
+index 10699c92273a..6bbcc6cd5dae 100644
+--- a/drivers/net/wireless/realtek/rtw89/coex.c
++++ b/drivers/net/wireless/realtek/rtw89/coex.c
+@@ -142,6 +142,15 @@ static const struct rtw89_btc_ver rtw89_btc_ver_defs[] = {
+ 	 .max_role_num = 6, .fcxosi = 6,   .fcxmlo = 2,   .bt_desired = 8,
+ 	 .fcxtrx = 9,
+ 	},
++	{RTL8852BT, RTW89_FW_VER_CODE(0, 29, 133, 0),
++	 .fcxbtcrpt = 9, .fcxtdma = 7,    .fcxslots = 7, .fcxcysta = 7,
++	 .fcxstep = 7,   .fcxnullsta = 7, .fcxmreg = 7,  .fcxgpiodbg = 8,
++	 .fcxbtver = 7,  .fcxbtscan = 7,  .fcxbtafh = 7, .fcxbtdevinfo = 7,
++	 .fwlrole = 7,   .frptmap = 5,    .fcxctrl = 7,  .fcxinit = 107,
++	 .fwevntrptl = 1, .fwc2hfunc = 2, .drvinfo_ver = 103, .info_buf = 1800,
++	 .max_role_num = 6, .fcxosi = 0,  .fcxmlo = 0,   .bt_desired = 8,
++	 .fcxtrx = 107,
++	},
+ 	{RTL8852BT, RTW89_FW_VER_CODE(0, 29, 122, 0),
+ 	 .fcxbtcrpt = 8, .fcxtdma = 7,    .fcxslots = 7, .fcxcysta = 7,
+ 	 .fcxstep = 7,   .fcxnullsta = 7, .fcxmreg = 7,  .fcxgpiodbg = 7,
+@@ -187,6 +196,15 @@ static const struct rtw89_btc_ver rtw89_btc_ver_defs[] = {
+ 	 .max_role_num = 6, .fcxosi = 0,  .fcxmlo = 0,   .bt_desired = 7,
+ 	 .fcxtrx = 0,
+ 	},
++	{RTL8851B, RTW89_FW_VER_CODE(0, 29, 133, 0),
++	 .fcxbtcrpt = 9, .fcxtdma = 7,    .fcxslots = 7, .fcxcysta = 7,
++	 .fcxstep = 7,   .fcxnullsta = 7, .fcxmreg = 7,  .fcxgpiodbg = 8,
++	 .fcxbtver = 7,  .fcxbtscan = 7,  .fcxbtafh = 7, .fcxbtdevinfo = 7,
++	 .fwlrole = 7,   .frptmap = 5,    .fcxctrl = 7,  .fcxinit = 107,
++	 .fwevntrptl = 1, .fwc2hfunc = 2, .drvinfo_ver = 103, .info_buf = 1800,
++	 .max_role_num = 6, .fcxosi = 0,  .fcxmlo = 0,   .bt_desired = 8,
++	 .fcxtrx = 107,
++	},
+ 	{RTL8851B, RTW89_FW_VER_CODE(0, 29, 29, 0),
+ 	 .fcxbtcrpt = 105, .fcxtdma = 3,    .fcxslots = 1, .fcxcysta = 5,
+ 	 .fcxstep = 3,   .fcxnullsta = 2, .fcxmreg = 2,  .fcxgpiodbg = 1,
+@@ -223,6 +241,15 @@ static const struct rtw89_btc_ver rtw89_btc_ver_defs[] = {
+ 	 .max_role_num = 5, .fcxosi = 0,  .fcxmlo = 0,   .bt_desired = 7,
+ 	 .fcxtrx = 0,
+ 	},
++	{RTL8852B, RTW89_FW_VER_CODE(0, 29, 133, 0),
++	 .fcxbtcrpt = 9, .fcxtdma = 7,    .fcxslots = 7, .fcxcysta = 7,
++	 .fcxstep = 7,   .fcxnullsta = 7, .fcxmreg = 7,  .fcxgpiodbg = 8,
++	 .fcxbtver = 7,  .fcxbtscan = 7,  .fcxbtafh = 7, .fcxbtdevinfo = 7,
++	 .fwlrole = 7,   .frptmap = 105,  .fcxctrl = 7,  .fcxinit = 107,
++	 .fwevntrptl = 1, .fwc2hfunc = 2, .drvinfo_ver = 103, .info_buf = 1800,
++	 .max_role_num = 6, .fcxosi = 0,  .fcxmlo = 0,   .bt_desired = 8,
++	 .fcxtrx = 107,
++	},
+ 	{RTL8852B, RTW89_FW_VER_CODE(0, 29, 122, 0),
+ 	 .fcxbtcrpt = 8, .fcxtdma = 7,    .fcxslots = 7, .fcxcysta = 7,
+ 	 .fcxstep = 7,   .fcxnullsta = 7, .fcxmreg = 7,  .fcxgpiodbg = 7,
+-- 
+2.55.0
+

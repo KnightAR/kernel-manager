@@ -1,0 +1,182 @@
+From 2ab07591a2a413780831e82913ae5a0185edd19c Mon Sep 17 00:00:00 2001
+From: Vicki Pfau <vi@endrift.com>
+Date: Mon, 9 Mar 2026 20:47:32 -0700
+Subject: [PATCH] [FOR-UPSTREAM] Input: xbox_gip - Add HID relaying
+
+GIP allows tunneling of HID packets, with the HID descriptor embedded in
+the GIP metadata exchanged during the initial handshake. This patch creates
+a hid_device for this HID descriptor if found, as well as relaying the HID
+packets.
+
+Signed-off-by: Vicki Pfau <vi@endrift.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/input/joystick/gip/gip-core.c | 94 ++++++++++++++++++++++++++-
+ drivers/input/joystick/gip/gip.h      |  2 +
+ 2 files changed, 93 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/input/joystick/gip/gip-core.c b/drivers/input/joystick/gip/gip-core.c
+index 15f8ed210711..c833b10259ab 100644
+--- a/drivers/input/joystick/gip/gip-core.c
++++ b/drivers/input/joystick/gip/gip-core.c
+@@ -560,6 +560,54 @@ int gip_send_vendor_message(struct gip_attachment *attachment,
+ 		bytes, num_bytes);
+ }
+ 
++static int gip_hid_ll_parse(struct hid_device *hdev)
++{
++	struct gip_attachment *attachment = hdev->driver_data;
++
++	return hid_parse_report(hdev,
++		attachment->metadata.device.hid_descriptor,
++		attachment->metadata.device.hid_descriptor_size);
++}
++
++static int gip_hid_ll_start(struct hid_device *hdev)
++{
++	return 0;
++}
++
++static void gip_hid_ll_stop(struct hid_device *hdev)
++{
++}
++
++static int gip_hid_ll_open(struct hid_device *hdev)
++{
++	return 0;
++}
++
++static void gip_hid_ll_close(struct hid_device *hdev)
++{
++}
++
++static int gip_hid_ll_raw_request(struct hid_device *hdev,
++	unsigned char reportnum, uint8_t *buf, size_t count,
++	unsigned char report_type, int reqtype)
++{
++	/*
++	 * TODO: Based on the metadata, output reports appear to be possible,
++	 * but the chatpad doesn't have the LEDs it claims to support, so
++	 * it's not clear how to test we're sending them properly.
++	 */
++	return 0;
++}
++
++static const struct hid_ll_driver gip_hid_ll_driver = {
++	.parse = gip_hid_ll_parse,
++	.start = gip_hid_ll_start,
++	.stop = gip_hid_ll_stop,
++	.open = gip_hid_ll_open,
++	.close = gip_hid_ll_close,
++	.raw_request = gip_hid_ll_raw_request,
++};
++
+ static void gip_metadata_free(struct device *dev, struct gip_metadata *metadata)
+ {
+ 	devm_kfree(dev, metadata->device.audio_formats);
+@@ -1361,7 +1409,34 @@ static int gip_send_init_sequence(struct gip_attachment *attachment)
+ 	if (rc)
+ 		return rc;
+ 
+-	return 0;
++	if (attachment->metadata.device.hid_descriptor) {
++		struct hid_device *hdev = hid_allocate_device();
++
++		if (IS_ERR(hdev))
++			return PTR_ERR(hdev);
++
++		hdev->ll_driver = &gip_hid_ll_driver;
++		hdev->bus = BUS_USB;
++		hdev->vendor = attachment->vendor_id;
++		hdev->product = attachment->product_id;
++		hdev->dev.parent = to_gip_device(attachment);
++		hdev->driver_data = attachment;
++		if (attachment->name)
++			strscpy(hdev->name, attachment->name);
++		else
++			strscpy(hdev->name, "Xbox Chatpad");
++		strscpy(hdev->phys, attachment->phys);
++		rc = hid_add_device(hdev);
++		if (rc) {
++			gip_err(attachment, "HID device add failed: %d\n", rc);
++			hid_destroy_device(hdev);
++		} else {
++			rcu_assign_pointer(attachment->hdev, hdev);
++			synchronize_rcu();
++		}
++	}
++
++	return rc;
+ }
+ 
+ static void gip_fragment_timeout(struct work_struct *work)
+@@ -1769,9 +1844,16 @@ static int gip_handle_command_firmware(struct gip_attachment *attachment,
+ static int gip_handle_command_hid_report(struct gip_attachment *attachment,
+ 	const struct gip_header *header, uint8_t *bytes, int num_bytes)
+ {
+-	gip_warn(attachment, "Unimplemented HID report message\n");
++	struct hid_device *hdev;
+ 
+-	return -EOPNOTSUPP;
++	guard(rcu)();
++	hdev = rcu_dereference(attachment->hdev);
++	if (hdev)
++		return hid_input_report(hdev, HID_INPUT_REPORT, bytes, num_bytes, true);
++
++	gip_warn(attachment, "Got HID report with no HID descriptor\n");
++
++	return -EPROTO;
+ }
+ 
+ static int gip_handle_command_extended(struct gip_attachment *attachment,
+@@ -2527,6 +2609,7 @@ static int gip_shutdown(struct gip_device *device)
+ 	for (i = 0; i < MAX_ATTACHMENTS; i++) {
+ 		struct gip_attachment *attachment = device->attachments[i];
+ 		struct input_dev *input;
++		struct hid_device *hdev;
+ 
+ 		if (!attachment)
+ 			continue;
+@@ -2537,14 +2620,19 @@ static int gip_shutdown(struct gip_device *device)
+ 
+ 			rcu_read_lock();
+ 			input = rcu_dereference(attachment->input);
++			hdev = rcu_dereference(attachment->hdev);
+ 			rcu_read_unlock();
+ 
+ 			rcu_assign_pointer(attachment->input, NULL);
++			rcu_assign_pointer(attachment->hdev, NULL);
+ 			synchronize_rcu();
+ 		}
+ 
+ 		if (input)
+ 			input_unregister_device(input);
++
++		if (hdev)
++			hid_destroy_device(hdev);
+ 	}
+ 
+ 	return 0;
+diff --git a/drivers/input/joystick/gip/gip.h b/drivers/input/joystick/gip/gip.h
+index 2e78aad508c3..fbcf66e18158 100644
+--- a/drivers/input/joystick/gip/gip.h
++++ b/drivers/input/joystick/gip/gip.h
+@@ -12,6 +12,7 @@
+ #ifndef _GIP_H
+ #define _GIP_H
+ 
++#include <linux/hid.h>
+ #include <linux/led-class-multicolor.h>
+ #include <linux/rcupdate.h>
+ #include <linux/usb/input.h>
+@@ -250,6 +251,7 @@ struct gip_attachment {
+ 	int extra_axes;
+ 
+ 	bool dpad_as_buttons;
++	struct hid_device __rcu *hdev;
+ };
+ 
+ struct gip_urb {
+-- 
+2.55.0
+

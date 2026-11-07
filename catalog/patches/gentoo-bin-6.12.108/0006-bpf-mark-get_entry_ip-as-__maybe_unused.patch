@@ -1,0 +1,29 @@
+From 1b70b71ce84289c134cb44c40b640a3bdb9657ca Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Micha=C5=82=20G=C3=B3rny?= <mgorny@gentoo.org>
+Date: Fri, 4 Jul 2025 21:40:30 +0200
+Subject: [PATCH 06/17] bpf: mark get_entry_ip as __maybe_unused
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+(original From: from genpatches, it is 404)
+
+From: https://www.spinics.net/lists/stable/msg604665.html
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ kernel/trace/bpf_trace.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/trace/bpf_trace.c b/kernel/trace/bpf_trace.c
+index e3038cc26f67..050c65d004c0 100644
+--- a/kernel/trace/bpf_trace.c
++++ b/kernel/trace/bpf_trace.c
+@@ -1027,7 +1027,7 @@ static const struct bpf_func_proto bpf_get_func_ip_proto_tracing = {
+ };
+ 
+ #ifdef CONFIG_X86_KERNEL_IBT
+-static unsigned long get_entry_ip(unsigned long fentry_ip)
++static unsigned long __maybe_unused get_entry_ip(unsigned long fentry_ip)
+ {
+ 	u32 instr;
+ 

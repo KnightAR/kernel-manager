@@ -1,0 +1,43 @@
+From 4a45759d0f6f979e93c2310a717bf8d74ae3e8e3 Mon Sep 17 00:00:00 2001
+From: Vicki Pfau <vi@endrift.com>
+Date: Tue, 11 Aug 2026 18:13:54 -0700
+Subject: [PATCH] [FROM-UPSTREAM] HID: steam: Fix wording of connect/disconnect
+ logs
+
+It always said Controller, even on Deck. Since we special-case other
+instances of Controller vs. Deck in strings, let's be consistent here too.
+
+Signed-off-by: Vicki Pfau <vi@endrift.com>
+Signed-off-by: Jiri Kosina <jkosina@suse.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/hid/hid-steam.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/hid/hid-steam.c b/drivers/hid/hid-steam.c
+index 29de32051319..461ebf37171b 100644
+--- a/drivers/hid/hid-steam.c
++++ b/drivers/hid/hid-steam.c
+@@ -1391,7 +1391,8 @@ static int steam_register(struct steam_device *steam)
+ 			"%s:steam_get_attributes failed with error %d\n",
+ 			__func__, ret);
+ 
+-	hid_info(steam->hdev, "Steam Controller '%s' connected",
++	hid_info(steam->hdev, "Steam %s '%s' connected",
++			steam->quirks & STEAM_QUIRK_DECK ? "Deck" : "Controller",
+ 			steam->serial_no);
+ 
+ 	/* ignore battery errors, we can live without it */
+@@ -1428,7 +1429,8 @@ static void steam_unregister(struct steam_device *steam)
+ 	if (!steam->registered)
+ 		return;
+ 
+-	hid_info(steam->hdev, "Steam Controller '%s' disconnected",
++	hid_info(steam->hdev, "Steam %s '%s' disconnected",
++			steam->quirks & STEAM_QUIRK_DECK ? "Deck" : "Controller",
+ 			steam->serial_no);
+ 	steam->registered = false;
+ 	steam_battery_unregister(steam);
+-- 
+2.55.0
+

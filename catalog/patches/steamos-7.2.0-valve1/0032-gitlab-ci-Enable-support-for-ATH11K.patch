@@ -1,0 +1,26 @@
+From e0b46b711788ad856c503d9b9b8cc6adf118a226 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Wed, 7 Feb 2024 00:52:25 +0200
+Subject: [PATCH] gitlab-ci: Enable support for ATH11K
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .config-fragment | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/.config-fragment b/.config-fragment
+index 1f87c8a50a93..db4b6c23c39c 100644
+--- a/.config-fragment
++++ b/.config-fragment
+@@ -25,3 +25,7 @@ CONFIG_SND_SOC_SOF_AMD_TOPLEVEL=y
+ CONFIG_SND_SOC_SOF_AMD_VANGOGH=y
+ 
+ CONFIG_LTRF216A=y
++
++CONFIG_ATH11K=y
++CONFIG_ATH11K_PCI=y
++CONFIG_CRYPTO_MICHAEL_MIC=y
+-- 
+2.55.0
+

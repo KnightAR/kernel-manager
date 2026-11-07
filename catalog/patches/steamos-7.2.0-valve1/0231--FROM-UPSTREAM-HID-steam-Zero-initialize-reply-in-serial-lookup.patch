@@ -1,0 +1,43 @@
+From d00ec22d4b85e3ace943f8c5b01a621fc62bc1f7 Mon Sep 17 00:00:00 2001
+From: Vicki Pfau <vi@endrift.com>
+Date: Wed, 29 Jul 2026 21:12:32 -0700
+Subject: [PATCH] [FROM-UPSTREAM] HID: steam: Zero-initialize reply in serial
+ lookup
+
+When requesting the serial number from a controller, the function will do
+some basic bounds checking to make sure the reply is valid, as well as
+capping off the reply with a null byte before copying. However, the error
+logging can leak uninitialized memory in some cases. We can simplify and
+solve this by just zero-initalizing the reply memory eagerly instead.
+
+Signed-off-by: Vicki Pfau <vi@endrift.com>
+Signed-off-by: Jiri Kosina <jkosina@suse.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/hid/hid-steam.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/hid/hid-steam.c b/drivers/hid/hid-steam.c
+index 222b5751040a..ddd439dd069b 100644
+--- a/drivers/hid/hid-steam.c
++++ b/drivers/hid/hid-steam.c
+@@ -488,7 +488,7 @@ static int steam_get_serial(struct steam_device *steam)
+ 	 */
+ 	int ret = 0;
+ 	u8 cmd[] = {ID_GET_STRING_ATTRIBUTE, sizeof(steam->serial_no), ATTRIB_STR_UNIT_SERIAL};
+-	u8 reply[3 + STEAM_SERIAL_LEN + 1];
++	u8 reply[3 + STEAM_SERIAL_LEN + 1] = {0};
+ 
+ 	guard(mutex)(&steam->report_mutex);
+ 	ret = steam_send_report(steam, cmd, sizeof(cmd));
+@@ -503,7 +503,6 @@ static int steam_get_serial(struct steam_device *steam)
+ 				(int)sizeof(reply), reply);
+ 		return -EIO;
+ 	}
+-	reply[3 + STEAM_SERIAL_LEN] = 0;
+ 	strscpy(steam->serial_no, reply + 3, reply[1]);
+ 	return ret;
+ }
+-- 
+2.55.0
+

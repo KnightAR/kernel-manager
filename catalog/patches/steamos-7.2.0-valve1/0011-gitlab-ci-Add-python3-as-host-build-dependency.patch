@@ -1,0 +1,52 @@
+From 6c0df9b52767aa1c7314cbfa41cfae85d4ffacec Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Wed, 26 Oct 2022 16:44:15 +0300
+Subject: [PATCH] gitlab-ci: Add python3 as host build dependency
+
+Ensure python3 is installed in order to fix the following build error:
+
+MKDIR     /builds/jupiter/linux-integration/tools/bpf/resolve_btfids/libbpf/
+MKDIR     /builds/jupiter/linux-integration/tools/bpf/resolve_btfids//libsubcmd
+HOSTCC  /builds/jupiter/linux-integration/tools/bpf/resolve_btfids/fixdep.o
+HOSTCC  /builds/jupiter/linux-integration/tools/objtool/fixdep.o
+GEN     /builds/jupiter/linux-integration/tools/bpf/resolve_btfids/libbpf/bpf_helper_defs.h
+INSTALL /builds/jupiter/linux-integration/tools/bpf/resolve_btfids/libbpf//include/bpf/bpf.h
+/usr/bin/env: 'python3': No such file or directory
+INSTALL /builds/jupiter/linux-integration/tools/bpf/resolve_btfids/libbpf//include/bpf/libbpf.h
+make[3]: *** [Makefile:160: /builds/jupiter/linux-integration/tools/bpf/resolve_btfids/libbpf/bpf_helper_defs.h] Error 127
+make[3]: *** Deleting file '/builds/jupiter/linux-integration/tools/bpf/resolve_btfids/libbpf/bpf_helper_defs.h'
+make[3]: *** Waiting for unfinished jobs....
+INSTALL /builds/jupiter/linux-integration/tools/bpf/resolve_btfids/libbpf//include/bpf/btf.h
+INSTALL /builds/jupiter/linux-integration/tools/bpf/resolve_btfids/libbpf//include/bpf/libbpf_common.h
+make[2]: *** [Makefile:55: /builds/jupiter/linux-integration/tools/bpf/resolve_btfids//libbpf/libbpf.a] Error 2
+make[2]: *** Waiting for unfinished jobs....
+HOSTLD  /builds/jupiter/linux-integration/tools/bpf/resolve_btfids/fixdep-in.o
+HOSTLD  /builds/jupiter/linux-integration/tools/objtool/fixdep-in.o
+LINK    /builds/jupiter/linux-integration/tools/bpf/resolve_btfids/fixdep
+LINK    /builds/jupiter/linux-integration/tools/objtool/fixdep
+make[1]: *** [Makefile:76: bpf/resolve_btfids] Error 2
+make: *** [Makefile:1348: tools/bpf/resolve_btfids] Error 2
+make: *** Waiting for unfinished jobs....
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index 9a88752052a8..eaee607b7c2d 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -19,7 +19,7 @@ kernel build:
+     - autoscaled
+   before_script:
+     - apt-get update -y
+-    - apt-get install -y rsync git build-essential bc kmod cpio flex cpio libncurses5-dev bison libssl-dev libelf-dev openssh-client curl qemu-system* unzip
++    - apt-get install -y rsync git build-essential bc kmod cpio flex libncurses5-dev bison libssl-dev libelf-dev openssh-client curl qemu-system* unzip python3
+   script:
+     - make x86_64_defconfig && make kvm_guest.config
+     - ./scripts/kconfig/merge_config.sh .config .config-fragment
+-- 
+2.55.0
+

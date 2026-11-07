@@ -1,0 +1,67 @@
+From 96e69e9ea6f342d39ec119e4471156206c8bac81 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Micha=C5=82=20G=C3=B3rny?= <mgorny@gentoo.org>
+Date: Sat, 19 Jul 2025 16:24:05 +0100
+Subject: [PATCH 12/17] kheaders: make it possible to override TAR
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Commit 86cdd2fdc4e39c388d39c7ba2396d1a9dfd66226 ("kheaders: make headers
+archive reproducible") introduced a number of options specific to GNU
+tar to the `tar` invocation in `gen_kheaders.sh` script.  This causes
+the script to fail to work on systems where `tar` is not GNU tar.  This
+can occur e.g. on recent Gentoo Linux installations that support using
+bsdtar from libarchive instead.
+
+Add a `TAR` make variable to make it possible to override the tar
+executable used, e.g. by specifying:
+
+  make TAR=gtar
+
+Link: https://bugs.gentoo.org/884061
+Reported-by: Sam James <sam@gentoo.org>
+Tested-by: Sam James <sam@gentoo.org>
+Co-developed-by: Masahiro Yamada <masahiroy@kernel.org>
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+Signed-off-by: Sam James <sam@gentoo.org>
+From: https://lore.kernel.org/all/277557da458c5fa07eba7d785b4f527cc37a023f.1752938644.git.sam@gentoo.org/
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ Makefile               | 3 ++-
+ kernel/gen_kheaders.sh | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 147cb58d53d9..88c5ea370fb6 100644
+--- a/Makefile
++++ b/Makefile
+@@ -521,6 +521,7 @@ LZMA		= lzma
+ LZ4		= lz4
+ XZ		= xz
+ ZSTD		= zstd
++TAR		= tar
+ 
+ CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
+ 		  -Wbitwise -Wno-return-void -Wno-unknown-attribute $(CF)
+@@ -601,7 +602,7 @@ export RUSTC RUSTDOC RUSTFMT RUSTC_OR_CLIPPY_QUIET RUSTC_OR_CLIPPY BINDGEN
+ export HOSTRUSTC KBUILD_HOSTRUSTFLAGS
+ export CPP AR NM STRIP OBJCOPY OBJDUMP READELF PAHOLE RESOLVE_BTFIDS LEX YACC AWK INSTALLKERNEL
+ export PERL PYTHON3 CHECK CHECKFLAGS MAKE UTS_MACHINE HOSTCXX
+-export KGZIP KBZIP2 KLZOP LZMA LZ4 XZ ZSTD
++export KGZIP KBZIP2 KLZOP LZMA LZ4 XZ ZSTD TAR
+ export KBUILD_HOSTCXXFLAGS KBUILD_HOSTLDFLAGS KBUILD_HOSTLDLIBS LDFLAGS_MODULE
+ export KBUILD_USERCFLAGS KBUILD_USERLDFLAGS CSTD_FLAG
+ 
+diff --git a/kernel/gen_kheaders.sh b/kernel/gen_kheaders.sh
+index 7e1340da5aca..7533f2c99876 100755
+--- a/kernel/gen_kheaders.sh
++++ b/kernel/gen_kheaders.sh
+@@ -88,7 +88,7 @@ find $cpio_dir -type f -print0 |
+ 	xargs -0 -P8 -n1 perl -pi -e 'BEGIN {undef $/;}; s/\/\*((?!SPDX).)*?\*\///smg;'
+ 
+ # Create archive and try to normalize metadata for reproducibility.
+-tar "${KBUILD_BUILD_TIMESTAMP:+--mtime=$KBUILD_BUILD_TIMESTAMP}" \
++${TAR:-tar} "${KBUILD_BUILD_TIMESTAMP:+--mtime=$KBUILD_BUILD_TIMESTAMP}" \
+     --exclude=".__afs*" --exclude=".nfs*" \
+     --owner=0 --group=0 --sort=name --numeric-owner --mode=u=rw,go=r,a+X \
+     -I $XZ -cf $tarfile -C $cpio_dir/ . > /dev/null

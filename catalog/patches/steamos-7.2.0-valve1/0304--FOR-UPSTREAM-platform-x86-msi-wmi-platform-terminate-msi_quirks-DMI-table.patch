@@ -1,0 +1,31 @@
+From 44fafbc6621287ee0211e87d45a7ba0aa00d3718 Mon Sep 17 00:00:00 2001
+From: Matthew Schwartz <matthew.schwartz@linux.dev>
+Date: Sat, 11 Jul 2026 17:22:00 -0700
+Subject: [PATCH] [FOR-UPSTREAM] platform/x86: msi-wmi-platform: terminate
+ msi_quirks DMI table
+
+The msi_quirks table lacks a terminating empty entry so it crashes the
+kernel on non-quirked MSI Claw devices.
+
+Fixes: bfd56a3d6de5 ("[FROM-ML] platform/x86: msi-wmi-platform: Add quirk system")
+Signed-off-by: Matthew Schwartz <matthew.schwartz@linux.dev>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/platform/x86/msi-wmi-platform.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/platform/x86/msi-wmi-platform.c b/drivers/platform/x86/msi-wmi-platform.c
+index 11ac3fb7dc62..6a19e0c45de2 100644
+--- a/drivers/platform/x86/msi-wmi-platform.c
++++ b/drivers/platform/x86/msi-wmi-platform.c
+@@ -282,6 +282,7 @@ static const struct dmi_system_id msi_quirks[] = {
+ 		},
+ 		.driver_data = &quirk_gen3,
+ 	},
++	{ }
+ };
+ 
+ static int msi_wmi_platform_parse_buffer(union acpi_object *obj, u8 *output, size_t length)
+-- 
+2.55.0
+

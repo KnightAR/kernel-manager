@@ -1,0 +1,104 @@
+From c360cc4b9060b57a27680eb546c48ccb455fd93d Mon Sep 17 00:00:00 2001
+From: Qu Wenruo <wqu@suse.com>
+Date: Mon, 30 Dec 2024 19:15:53 +1030
+Subject: [PATCH 04/25] btrfs: prefer to use "/dev/mapper/name" soft link
+ instead of "/dev/dm-*"
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+[BUG]
+There is a gentoo bug report that upstream commit a5d74fa24752
+("btrfs: avoid unnecessary device path update for the same device") breaks
+6.6 LTS kernel behavior where previously lsblk can properly show multiple
+mount points of the same btrfs:
+
+ With kernel 6.6.62:
+ NAME         MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINTS
+ sdb            8:16   0   9,1T  0 disk
+ └─sdb1         8:17   0   9,1T  0 part
+   └─hdd2     254:6    0   9,1T  0 crypt /mnt/hdd2
+                                         /var/cache/distfiles
+                                         /var/cache/binpkgs
+
+But not with that upstream commit backported:
+
+ With kernel 6.6.67:
+ sdb            8:16   0   9,1T  0 disk
+ └─sdb1         8:17   0   9,1T  0 part
+   └─hdd2     254:6    0   9,1T  0 crypt /mnt/hdd2
+
+[CAUSE]
+With that upstream patch backported to 6.6 LTS, the main change is in
+the mount info result:
+
+Before:
+ /dev/mapper/hdd2 /mnt/hdd2 btrfs rw,relatime,space_cache=v2,subvolid=382,subvol=/hdd2 0 0
+ /dev/mapper/hdd2 /mnt/dump btrfs rw,relatime,space_cache=v2,subvolid=393,subvol=/dump 0 0
+
+After:
+ /dev/dm-1 /mnt/hdd2 btrfs rw,relatime,space_cache=v2,subvolid=382,subvol=/hdd2 0 0
+ /dev/dm-1 /mnt/dump btrfs rw,relatime,space_cache=v2,subvolid=393,subvol=/dump 0 0
+
+I believe that change of mount device is causing problems for lsblk.
+
+And before that patch, even if udev registered "/dev/dm-1" to btrfs,
+later mount triggered a rescan and change the name back to
+"/dev/mapper/hdd2" thus older kernels will work as expected.
+
+But after that patch, if udev registered "/dev/dm-1", then mount
+triggered a rescan, but since btrfs detects both "/dev/dm-1" and
+"/dev/mapper/hdd2" are pointing to the same block device, btrfs refuses
+to do the rename, causing the less human readable "/dev/dm-1" to be
+there forever, and trigger the bug for lsblk.
+
+Fortunately for newer kernels, I guess due to the migration to fsconfig
+mount API, even if the end user explicitly mount the fs using
+"/dev/dm-1", the mount will resolve the path to "/dev/mapper/hdd2" link
+anyway.
+
+So for newer kernels it won't be a big deal but one extra safety net.
+
+[FIX]
+Add an extra exception for is_same_device(), that if both paths are
+pointing to the same device, but the newer path begins with "/dev/mapper"
+and the older path is not, then still treat them as different devices,
+so that we can rename to use the more human readable device path.
+
+Reported-by: David Duchesne <aether@disroot.org>
+Link: https://bugs.gentoo.org/947126
+Fixes: a5d74fa24752 ("btrfs: avoid unnecessary device path update for the same device")
+Signed-off-by: Qu Wenruo <wqu@suse.com>
+From: https://lore.kernel.org/linux-btrfs/30aefd8b4e8c1f0c5051630b106a1ff3570d28ed.1735537399.git.wqu@suse.com/T/#u
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ fs/btrfs/volumes.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/fs/btrfs/volumes.c b/fs/btrfs/volumes.c
+index f5e4b8f3dcb7..2f75109a3034 100644
+--- a/fs/btrfs/volumes.c
++++ b/fs/btrfs/volumes.c
+@@ -716,8 +716,20 @@ static bool is_same_device(struct btrfs_device *device, const char *new_path)
+ 	ret = kern_path(new_path, LOOKUP_FOLLOW, &new);
+ 	if (ret)
+ 		goto out;
+-	if (path_equal(&old, &new))
+-		is_same = true;
++	if (path_equal(&old, &new)) {
++		/*
++		 * Special case for device mapper with its soft links.
++		 *
++		 * We can have the old path as "/dev/dm-3", but udev triggered
++		 * rescan on the soft link "/dev/mapper/test".
++		 * In that case we want to rename to that mapper link, to avoid
++		 * a bug in libblkid where it can not handle multiple mount
++		 * points if the device is "/dev/dm-3".
++		 */
++		if (!strncmp(old_path, "/dev/mapper/", strlen("/dev/mapper")) &&
++		    strncmp(new_path, "/dev/mapper/", strlen("/dev/mapper")))
++			is_same = true;
++	}
+ out:
+ 	kfree(old_path);
+ 	path_put(&old);

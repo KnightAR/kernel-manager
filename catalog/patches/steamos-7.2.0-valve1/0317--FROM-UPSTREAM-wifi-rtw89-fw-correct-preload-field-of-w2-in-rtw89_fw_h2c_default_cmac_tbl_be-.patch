@@ -1,0 +1,40 @@
+From 542e6b77361422eb36bdd776f7e6c4d0f5394ffb Mon Sep 17 00:00:00 2001
+From: Wentao Guan <guanwentao@uniontech.com>
+Date: Thu, 11 Jun 2026 16:20:21 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: fw: correct preload field of w2
+ in rtw89_fw_h2c_default_cmac_tbl_be()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+BE_CCTL_INFO_W2_PRELOAD_ENABLE is for h2c->w2, not h2c->w1.
+These will cause h2c->w1 wrong overlap by w2 and w2 not initialized.
+
+Fixes: c73607b3a8ef ("wifi: rtw89: fw: add CMAC H2C command to initialize default value for RTL8922D")
+Signed-off-by: Wentao Guan <guanwentao@uniontech.com>
+Acked-by: Ping-Ke Shih <pkshih@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260611082021.46650-1-guanwentao@uniontech.com
+(cherry picked from commit e13cd023a4cdbbb9e58ab91e857b5e45ea753f19)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/fw.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/fw.c b/drivers/net/wireless/realtek/rtw89/fw.c
+index f419ebcc3dfd..1cdfb80f3b82 100644
+--- a/drivers/net/wireless/realtek/rtw89/fw.c
++++ b/drivers/net/wireless/realtek/rtw89/fw.c
+@@ -3746,7 +3746,7 @@ int rtw89_fw_h2c_default_cmac_tbl_be(struct rtw89_dev *rtwdev,
+ 		  le32_encode_bits(4, BE_CCTL_INFO_W1_RTS_RTY_LOWEST_RATE);
+ 	h2c->m1 = cpu_to_le32(BE_CCTL_INFO_W1_ALL);
+ 
+-	h2c->w1 = le32_encode_bits(preld, BE_CCTL_INFO_W2_PRELOAD_ENABLE);
++	h2c->w2 = le32_encode_bits(preld, BE_CCTL_INFO_W2_PRELOAD_ENABLE);
+ 	h2c->m2 = cpu_to_le32(BE_CCTL_INFO_W2_ALL);
+ 
+ 	h2c->m3 = cpu_to_le32(BE_CCTL_INFO_W3_ALL);
+-- 
+2.55.0
+

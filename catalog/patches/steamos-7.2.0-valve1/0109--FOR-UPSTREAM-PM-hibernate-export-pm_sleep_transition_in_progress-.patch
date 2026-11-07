@@ -1,0 +1,30 @@
+From bcc6eb8de9207717694b2f35f76cd5ed0b208220 Mon Sep 17 00:00:00 2001
+From: Muhammad Usama Anjum <usama.anjum@collabora.com>
+Date: Wed, 15 Oct 2025 14:25:55 +0500
+Subject: [PATCH] [FOR-UPSTREAM] PM: hibernate: export
+ pm_sleep_transition_in_progress()
+
+Export pm_sleep_transition_in_progress() to be used by other
+modules.
+
+Signed-off-by: Muhammad Usama Anjum <usama.anjum@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ kernel/power/main.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/kernel/power/main.c b/kernel/power/main.c
+index 5429e9f19b65..7f8a44470a5e 100644
+--- a/kernel/power/main.c
++++ b/kernel/power/main.c
+@@ -639,6 +639,7 @@ bool pm_sleep_transition_in_progress(void)
+ {
+ 	return pm_suspend_in_progress() || hibernation_in_progress();
+ }
++EXPORT_SYMBOL_GPL(pm_sleep_transition_in_progress);
+ #endif /* CONFIG_PM_SLEEP */
+ 
+ #ifdef CONFIG_PM_SLEEP_DEBUG
+-- 
+2.55.0
+

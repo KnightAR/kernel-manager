@@ -1,0 +1,50 @@
+From d815b49a5e3d95fd398dee923a89c2bc9a1f9725 Mon Sep 17 00:00:00 2001
+From: "Derek J. Clark" <derekjohn.clark@gmail.com>
+Date: Fri, 12 Jun 2026 04:19:15 +0000
+Subject: [PATCH] [NOT-FOR-UPSTREAM] platform/x86: wmi-msi-platform: Add MSI
+ Claw A8 support
+
+Adds MSI Claw A8 BZ2EM support. The device doesn't use the same EC
+registers that Intel does, so PL1/PL2 are omitted for now.
+
+Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/platform/x86/msi-wmi-platform.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/platform/x86/msi-wmi-platform.c b/drivers/platform/x86/msi-wmi-platform.c
+index 2439b4f0001b..11ac3fb7dc62 100644
+--- a/drivers/platform/x86/msi-wmi-platform.c
++++ b/drivers/platform/x86/msi-wmi-platform.c
+@@ -242,6 +242,12 @@ static struct msi_wmi_platform_quirk quirk_gen2 = {
+ 	.pl1_max = 30,
+ 	.pl2_max = 37
+ };
++static struct msi_wmi_platform_quirk quirk_gen3 = {
++	.shift_mode = true,
++	.charge_threshold = true,
++	.dual_fans = true,
++	.restore_curves = true,
++};
+ 
+ static const struct dmi_system_id msi_quirks[] = {
+ 	{
+@@ -268,6 +274,14 @@ static const struct dmi_system_id msi_quirks[] = {
+ 		},
+ 		.driver_data = &quirk_gen2,
+ 	},
++	{
++		.ident = "MSI Claw A8 BZ2EM",
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "Micro-Star International Co., Ltd."),
++			DMI_MATCH(DMI_BOARD_NAME, "MS-1T8K"),
++		},
++		.driver_data = &quirk_gen3,
++	},
+ };
+ 
+ static int msi_wmi_platform_parse_buffer(union acpi_object *obj, u8 *output, size_t length)
+-- 
+2.55.0
+

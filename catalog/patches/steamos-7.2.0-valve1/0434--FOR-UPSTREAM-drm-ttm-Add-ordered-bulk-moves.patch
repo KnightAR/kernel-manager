@@ -1,0 +1,527 @@
+From 168644533b3f388c1236338ef027076abbb975c7 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <natalie.vock@gmx.de>
+Date: Wed, 1 Jul 2026 11:55:03 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/ttm: Add ordered bulk moves
+
+Ordered bulk moves maintain the list of resources in a user-defined
+order, useful for example to implement priorities. U32_MAX is sometimes
+treated as a special "unset priority" sentinel. An ordered bulk move
+where all priorities are unset behaves exactly like an unordered bulk
+move.
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/ttm/ttm_bo.c       |  41 ++++++++--
+ drivers/gpu/drm/ttm/ttm_bo_util.c  |  63 ++++++++++++++-
+ drivers/gpu/drm/ttm/ttm_resource.c | 118 ++++++++++++++++++++++++++++-
+ drivers/gpu/drm/xe/xe_vm.c         |   2 +-
+ include/drm/ttm/ttm_bo.h           |  43 ++++++++---
+ include/drm/ttm/ttm_resource.h     |  12 ++-
+ 6 files changed, 255 insertions(+), 24 deletions(-)
+
+diff --git a/drivers/gpu/drm/ttm/ttm_bo.c b/drivers/gpu/drm/ttm/ttm_bo.c
+index 9224d2b4b1f5..e9ff05a401df 100644
+--- a/drivers/gpu/drm/ttm/ttm_bo.c
++++ b/drivers/gpu/drm/ttm/ttm_bo.c
+@@ -86,6 +86,16 @@ void ttm_bo_move_to_lru_tail(struct ttm_buffer_object *bo)
+ }
+ EXPORT_SYMBOL(ttm_bo_move_to_lru_tail);
+ 
++static void ttm_bo_set_bulk_move_locked(struct ttm_buffer_object *bo,
++					struct ttm_lru_bulk_move *bulk)
++{
++	if (bo->resource)
++		ttm_resource_del_bulk_move(bo->resource, bo);
++	bo->bulk_move = bulk;
++	if (bo->resource)
++		ttm_resource_add_bulk_move(bo->resource, bo);
++}
++
+ /**
+  * ttm_bo_set_bulk_move - update BOs bulk move object
+  *
+@@ -105,19 +115,40 @@ void ttm_bo_set_bulk_move(struct ttm_buffer_object *bo,
+ {
+ 	dma_resv_assert_held(bo->base.resv);
+ 
++	/* Unordered insertions into ordered bulk moves are forbidden. */
++	WARN_ON_ONCE(bulk && bulk->ordered);
++
+ 	if (bo->bulk_move == bulk)
+ 		return;
+ 
+ 	spin_lock(&bo->bdev->lru_lock);
+-	if (bo->resource)
+-		ttm_resource_del_bulk_move(bo->resource, bo);
+-	bo->bulk_move = bulk;
+-	if (bo->resource)
+-		ttm_resource_add_bulk_move(bo->resource, bo);
++	ttm_bo_set_bulk_move_locked(bo, bulk);
+ 	spin_unlock(&bo->bdev->lru_lock);
+ }
+ EXPORT_SYMBOL(ttm_bo_set_bulk_move);
+ 
++void ttm_bo_set_bulk_move_ordered(struct ttm_buffer_object *bo,
++				  struct ttm_lru_bulk_move *bulk,
++				  uint32_t bulk_order)
++{
++	dma_resv_assert_held(bo->base.resv);
++
++	if (!bulk)
++		return ttm_bo_set_bulk_move(bo, NULL);
++
++	/* Ordered insertions into unordered bulk moves are forbidden. */
++	WARN_ON_ONCE(!bulk->ordered);
++
++	if (bo->bulk_move == bulk && bo->bulk_move_order == bulk_order)
++		return;
++
++	spin_lock(&bo->bdev->lru_lock);
++	bo->bulk_move_order = bulk_order;
++	ttm_bo_set_bulk_move_locked(bo, bulk);
++	spin_unlock(&bo->bdev->lru_lock);
++}
++EXPORT_SYMBOL(ttm_bo_set_bulk_move_ordered);
++
+ static int ttm_bo_handle_move_mem(struct ttm_buffer_object *bo,
+ 				  struct ttm_resource *mem, bool evict,
+ 				  struct ttm_operation_ctx *ctx,
+diff --git a/drivers/gpu/drm/ttm/ttm_bo_util.c b/drivers/gpu/drm/ttm/ttm_bo_util.c
+index 96699532817c..76b503c02ad7 100644
+--- a/drivers/gpu/drm/ttm/ttm_bo_util.c
++++ b/drivers/gpu/drm/ttm/ttm_bo_util.c
+@@ -29,6 +29,7 @@
+  * Authors: Thomas Hellstrom <thellstrom-at-vmware-dot-com>
+  */
+ 
++#include "drm/ttm/ttm_resource.h"
+ #include <linux/export.h>
+ #include <linux/swap.h>
+ #include <linux/vmalloc.h>
+@@ -846,7 +847,9 @@ static bool ttm_lru_walk_trylock(struct ttm_bo_lru_cursor *curs,
+ 		return true;
+ 	}
+ 
+-	if (bo->base.resv == ctx->resv && ctx->allow_res_evict) {
++	if (bo->base.resv == ctx->resv &&
++	    (ctx->allow_res_evict ||
++	     (ctx->allow_bulk_evict && curs->bulk_move))) {
+ 		dma_resv_assert_held(bo->base.resv);
+ 		return true;
+ 	}
+@@ -883,11 +886,52 @@ static int ttm_lru_walk_ticketlock(struct ttm_bo_lru_cursor *curs,
+ 	} else if (!arg->ctx->exec && ret == -EDEADLK) {
+ 		/* Caller needs to exit the ww transaction. */
+ 		ret = -ENOSPC;
++	} else if (arg->ctx->exec && ret == -EALREADY &&
++		   (arg->ctx->allow_res_evict ||
++		    (arg->ctx->allow_bulk_evict && curs->bulk_move))) {
++		ret = 0;
+ 	}
+ 
+ 	return ret;
+ }
+ 
++s64 ttm_lru_walk_ordered_bulk_for_evict(struct ttm_lru_walk *walk,
++					struct ttm_device *bdev,
++					struct ttm_resource_manager *man,
++					u32 mem_type,
++					struct ttm_buffer_object *evictor,
++					s64 target)
++{
++	struct ttm_bo_lru_cursor cursor;
++	struct ttm_buffer_object *bo;
++	s64 progress = 0;
++	s64 lret;
++
++	if (!evictor->bulk_move || !evictor->bulk_move->ordered)
++		return 0;
++
++	ttm_bo_lru_for_each_on_bulk_reserved_guarded(
++		&cursor, man, &walk->arg, bo, mem_type, evictor->bulk_move)
++	{
++		/* FIXME: We would actually need to hold bdev->lru_lock to read the orders safely here??? */
++		if (READ_ONCE(bo->bulk_move_order) >=
++		    READ_ONCE(evictor->bulk_move_order))
++			break;
++
++		lret = walk->process_bo(walk, bo);
++		if (lret == -EBUSY)
++			lret = 0;
++		progress = (lret < 0) ? lret : progress + lret;
++		if (progress < 0 || progress >= target)
++			break;
++	}
++	if (IS_ERR(bo))
++		return PTR_ERR(bo);
++
++	return progress;
++}
++EXPORT_SYMBOL(ttm_lru_walk_ordered_bulk_for_evict);
++
+ /**
+  * ttm_lru_walk_for_evict() - Perform a LRU list walk, with actions taken on
+  * valid items.
+@@ -980,6 +1024,8 @@ EXPORT_SYMBOL(ttm_bo_lru_cursor_fini);
+  * @curs: The ttm_bo_lru_cursor to initialize.
+  * @man: The ttm resource_manager whose LRU lists to iterate over.
+  * @arg: The ttm_lru_walk_arg to govern the walk.
++ * @bulk: Optional ttm_lru_bulk_move; if set, only resource from that
++ * bulk are included in iteration.
+  *
+  * Initialize a struct ttm_bo_lru_cursor.
+  *
+@@ -988,11 +1034,14 @@ EXPORT_SYMBOL(ttm_bo_lru_cursor_fini);
+ struct ttm_bo_lru_cursor *
+ ttm_bo_lru_cursor_init(struct ttm_bo_lru_cursor *curs,
+ 		       struct ttm_resource_manager *man,
+-		       struct ttm_lru_walk_arg *arg)
++		       struct ttm_lru_walk_arg *arg, u32 mem_type,
++		       struct ttm_lru_bulk_move *bulk)
+ {
+ 	memset(curs, 0, sizeof(*curs));
+ 	ttm_resource_cursor_init(&curs->res_curs, man);
++	curs->res_curs.mem_type = mem_type;
+ 	curs->arg = arg;
++	curs->bulk_move = bulk;
+ 
+ 	return curs;
+ }
+@@ -1015,10 +1064,16 @@ __ttm_bo_lru_cursor_next(struct ttm_bo_lru_cursor *curs)
+ 		bool bo_locked = false;
+ 
+ 		if (first) {
+-			res = ttm_resource_manager_first(&curs->res_curs);
++			if (curs->bulk_move)
++				res = ttm_resource_manager_first_on_bulk(&curs->res_curs, curs->bulk_move);
++			else
++				res = ttm_resource_manager_first(&curs->res_curs);
+ 			first = false;
+ 		} else {
+-			res = ttm_resource_manager_next(&curs->res_curs);
++			if (curs->bulk_move)
++				res = ttm_resource_manager_next_on_bulk(&curs->res_curs);
++			else
++				res = ttm_resource_manager_next(&curs->res_curs);
+ 		}
+ 		if (!res)
+ 			break;
+diff --git a/drivers/gpu/drm/ttm/ttm_resource.c b/drivers/gpu/drm/ttm/ttm_resource.c
+index 58249606a91c..ed330a545d92 100644
+--- a/drivers/gpu/drm/ttm/ttm_resource.c
++++ b/drivers/gpu/drm/ttm/ttm_resource.c
+@@ -122,10 +122,11 @@ void ttm_resource_cursor_fini(struct ttm_resource_cursor *cursor)
+  *
+  * For now just memset the structure to zero.
+  */
+-void ttm_lru_bulk_move_init(struct ttm_lru_bulk_move *bulk)
++void ttm_lru_bulk_move_init(struct ttm_lru_bulk_move *bulk, bool ordered)
+ {
+ 	memset(bulk, 0, sizeof(*bulk));
+ 	INIT_LIST_HEAD(&bulk->cursor_list);
++	bulk->ordered = ordered;
+ }
+ EXPORT_SYMBOL(ttm_lru_bulk_move_init);
+ 
+@@ -222,6 +223,49 @@ static void ttm_lru_bulk_move_pos_tail(struct ttm_lru_bulk_move_pos *pos,
+ 	}
+ }
+ 
++/* Move the resource to the appropriate ordered position in the bulk move */
++static void ttm_lru_bulk_move_pos_ordered(struct ttm_lru_bulk_move_pos *pos,
++					  struct ttm_resource *res)
++{
++	struct ttm_resource *insert_point;
++
++	if (pos->first == res && pos->last == res)
++		return;
++
++	if (pos->last == res)
++		pos->last = ttm_lru_prev_res(res);
++	if (pos->first == res)
++		pos->first = ttm_lru_next_res(res);
++
++	WARN_ON(pos->last->bo->base.resv != res->bo->base.resv);
++	WARN_ON(pos->first->bo->base.resv != res->bo->base.resv);
++
++	insert_point = pos->last;
++	while (insert_point != pos->first) {
++		if (insert_point == res) {
++			insert_point = ttm_lru_prev_res(insert_point);
++			WARN_ON(insert_point->bo->base.resv !=
++				res->bo->base.resv);
++			continue;
++		}
++		if (insert_point->bo->bulk_move_order <=
++		    res->bo->bulk_move_order)
++			break;
++		insert_point = ttm_lru_prev_res(insert_point);
++		WARN_ON(insert_point->bo->base.resv != res->bo->base.resv);
++	}
++
++	if (insert_point->bo->bulk_move_order > res->bo->bulk_move_order) {
++		WARN_ON(insert_point != pos->first);
++		list_move_tail(&res->lru.link, &pos->first->lru.link);
++		pos->first = res;
++	} else {
++		list_move(&res->lru.link, &insert_point->lru.link);
++		if (insert_point == pos->last)
++			pos->last = res;
++	}
++}
++
+ /* Add the resource to a bulk_move cursor */
+ static void ttm_lru_bulk_move_add(struct ttm_lru_bulk_move *bulk,
+ 				  struct ttm_resource *res)
+@@ -233,7 +277,10 @@ static void ttm_lru_bulk_move_add(struct ttm_lru_bulk_move *bulk,
+ 		pos->last = res;
+ 	} else {
+ 		WARN_ON(pos->first->bo->base.resv != res->bo->base.resv);
+-		ttm_lru_bulk_move_pos_tail(pos, res);
++		if (bulk->ordered)
++			ttm_lru_bulk_move_pos_ordered(pos, res);
++		else
++			ttm_lru_bulk_move_pos_tail(pos, res);
+ 	}
+ }
+ 
+@@ -320,7 +367,10 @@ void ttm_resource_move_to_lru_tail(struct ttm_resource *res)
+ 		struct ttm_lru_bulk_move_pos *pos =
+ 			ttm_lru_bulk_move_pos(bo->bulk_move, res);
+ 
+-		ttm_lru_bulk_move_pos_tail(pos, res);
++		if (bo->bulk_move->ordered)
++			ttm_lru_bulk_move_pos_ordered(pos, res);
++		else
++			ttm_lru_bulk_move_pos_tail(pos, res);
+ 	} else {
+ 		struct ttm_resource_manager *man;
+ 
+@@ -705,6 +755,68 @@ ttm_resource_manager_first(struct ttm_resource_cursor *cursor)
+ 	return ttm_resource_manager_next(cursor);
+ }
+ 
++struct ttm_resource *
++ttm_resource_manager_first_on_bulk(struct ttm_resource_cursor *cursor,
++				   struct ttm_lru_bulk_move *bulk)
++{
++	struct ttm_resource_manager *man = cursor->man;
++	struct ttm_resource *first;
++
++	if (WARN_ON_ONCE(!man))
++		return NULL;
++
++	lockdep_assert_held(&man->bdev->lru_lock);
++
++	for (;;) {
++		first = bulk->pos[cursor->mem_type][cursor->priority].first;
++
++		if (first)
++			break;
++		if (++cursor->priority >= TTM_MAX_BO_PRIORITY)
++			return NULL;
++	}
++
++	ttm_resource_cursor_check_bulk(cursor, &first->lru);
++	list_move(&cursor->hitch.link, &first->lru.link);
++	return first;
++}
++
++struct ttm_resource *
++ttm_resource_manager_next_on_bulk(struct ttm_resource_cursor *cursor)
++{
++	struct ttm_resource_manager *man = cursor->man;
++	struct ttm_lru_bulk_move *bulk = cursor->bulk;
++	struct ttm_lru_item *lru;
++
++	lockdep_assert_held(&man->bdev->lru_lock);
++
++	if (WARN_ON(!bulk))
++		return NULL;
++
++	for (;;) {
++		lru = &cursor->hitch;
++		list_for_each_entry_continue(lru, &man->lru[cursor->priority],
++					     link) {
++			if (!ttm_lru_item_is_res(lru))
++				continue;
++
++			ttm_resource_cursor_check_bulk(cursor, lru);
++			if (cursor->bulk != bulk)
++				break;
++
++			list_move(&cursor->hitch.link, &lru->link);
++			return ttm_lru_item_to_res(lru);
++		}
++
++		if (++cursor->priority >= TTM_MAX_BO_PRIORITY)
++			break;
++
++		return ttm_resource_manager_first_on_bulk(cursor, bulk);
++	}
++
++	return NULL;
++}
++
+ /**
+  * ttm_resource_manager_next() - Continue iterating over the resource manager
+  * resources
+diff --git a/drivers/gpu/drm/xe/xe_vm.c b/drivers/gpu/drm/xe/xe_vm.c
+index 67819deb45e3..6c9f2d6415ef 100644
+--- a/drivers/gpu/drm/xe/xe_vm.c
++++ b/drivers/gpu/drm/xe/xe_vm.c
+@@ -1655,7 +1655,7 @@ struct xe_vm *xe_vm_create(struct xe_device *xe, u32 flags, struct xe_file *xef)
+ 	INIT_LIST_HEAD(&vm->faults.list);
+ 	spin_lock_init(&vm->faults.lock);
+ 
+-	ttm_lru_bulk_move_init(&vm->lru_bulk_move);
++	ttm_lru_bulk_move_init(&vm->lru_bulk_move, false);
+ 
+ 	INIT_WORK(&vm->destroy_work, vm_destroy_work_func);
+ 
+diff --git a/include/drm/ttm/ttm_bo.h b/include/drm/ttm/ttm_bo.h
+index d05d4daa85a0..cf3e169deea5 100644
+--- a/include/drm/ttm/ttm_bo.h
++++ b/include/drm/ttm/ttm_bo.h
+@@ -112,6 +112,7 @@ struct ttm_buffer_object {
+ 	struct ttm_resource *resource;
+ 	struct ttm_tt *ttm;
+ 	struct ttm_lru_bulk_move *bulk_move;
++	uint32_t bulk_move_order;
+ 	unsigned priority;
+ 	unsigned pin_count;
+ 
+@@ -232,6 +233,12 @@ struct ttm_lru_walk {
+ 
+ s64 ttm_lru_walk_for_evict(struct ttm_lru_walk *walk, struct ttm_device *bdev,
+ 			   struct ttm_resource_manager *man, s64 target);
++s64 ttm_lru_walk_ordered_bulk_for_evict(struct ttm_lru_walk *walk,
++					struct ttm_device *bdev,
++					struct ttm_resource_manager *man,
++					u32 mem_type,
++					struct ttm_buffer_object *evictor,
++					s64 target);
+ 
+ /**
+  * struct ttm_bo_shrink_flags - flags to govern the bo shrinking behaviour
+@@ -396,6 +403,9 @@ int ttm_bo_validate(struct ttm_buffer_object *bo,
+ void ttm_bo_fini(struct ttm_buffer_object *bo);
+ void ttm_bo_set_bulk_move(struct ttm_buffer_object *bo,
+ 			  struct ttm_lru_bulk_move *bulk);
++void ttm_bo_set_bulk_move_ordered(struct ttm_buffer_object *bo,
++				  struct ttm_lru_bulk_move *bulk,
++				  uint32_t bulk_order);
+ int ttm_bo_evict(struct ttm_buffer_object *bo, struct ttm_operation_ctx *ctx);
+ bool ttm_bo_eviction_valuable(struct ttm_buffer_object *bo,
+ 			      const struct ttm_place *place);
+@@ -489,16 +499,21 @@ struct ttm_bo_lru_cursor {
+ 	 * unlock before the next iteration or after loop exit.
+ 	 */
+ 	bool needs_unlock;
++	/**
++	 * @bulk_move: Optional pointer to a bulk_move structure to iterate
++	 * over. If non-NULL, only buffers from that bulk move are included
++	 * in the iteration.
++	 */
++	struct ttm_lru_bulk_move *bulk_move;
+ 	/** @arg: Pointer to common BO LRU walk arguments. */
+ 	struct ttm_lru_walk_arg *arg;
+ };
+ 
+ void ttm_bo_lru_cursor_fini(struct ttm_bo_lru_cursor *curs);
+ 
+-struct ttm_bo_lru_cursor *
+-ttm_bo_lru_cursor_init(struct ttm_bo_lru_cursor *curs,
+-		       struct ttm_resource_manager *man,
+-		       struct ttm_lru_walk_arg *arg);
++struct ttm_bo_lru_cursor *ttm_bo_lru_cursor_init(
++	struct ttm_bo_lru_cursor *curs, struct ttm_resource_manager *man,
++	struct ttm_lru_walk_arg *arg, u32 mem_type, struct ttm_lru_bulk_move *bulk);
+ 
+ struct ttm_buffer_object *ttm_bo_lru_cursor_first(struct ttm_bo_lru_cursor *curs);
+ 
+@@ -507,11 +522,12 @@ struct ttm_buffer_object *ttm_bo_lru_cursor_next(struct ttm_bo_lru_cursor *curs)
+ /*
+  * Defines needed to use autocleanup (linux/cleanup.h) with struct ttm_bo_lru_cursor.
+  */
+-DEFINE_CLASS(ttm_bo_lru_cursor, struct ttm_bo_lru_cursor *,
+-	     if (_T) {ttm_bo_lru_cursor_fini(_T); },
+-	     ttm_bo_lru_cursor_init(curs, man, arg),
+-	     struct ttm_bo_lru_cursor *curs, struct ttm_resource_manager *man,
+-	     struct ttm_lru_walk_arg *arg);
++DEFINE_CLASS(
++	ttm_bo_lru_cursor, struct ttm_bo_lru_cursor *,
++	if (_T) { ttm_bo_lru_cursor_fini(_T); },
++	ttm_bo_lru_cursor_init(curs, man, arg, mem_type, bulk),
++	struct ttm_bo_lru_cursor *curs, struct ttm_resource_manager *man,
++	struct ttm_lru_walk_arg *arg, u32 mem_type, struct ttm_lru_bulk_move *bulk);
+ static inline void *
+ class_ttm_bo_lru_cursor_lock_ptr(class_ttm_bo_lru_cursor_t *_T)
+ { return *_T; }
+@@ -540,9 +556,16 @@ class_ttm_bo_lru_cursor_lock_ptr(class_ttm_bo_lru_cursor_t *_T)
+  * dereference @_bo after loop exit.
+  */
+ #define ttm_bo_lru_for_each_reserved_guarded(_cursor, _man, _arg, _bo)	\
+-	scoped_guard(ttm_bo_lru_cursor, _cursor, _man, _arg)		\
++	scoped_guard(ttm_bo_lru_cursor, _cursor, _man, _arg, 0, NULL)	\
+ 		for ((_bo) = ttm_bo_lru_cursor_first(_cursor);		\
+ 		       !IS_ERR_OR_NULL(_bo);				\
+ 		       (_bo) = ttm_bo_lru_cursor_next(_cursor))
+ 
++#define ttm_bo_lru_for_each_on_bulk_reserved_guarded(_cursor, _man, _arg, _bo,	\
++						     _mem_type, _bulk)		\
++	scoped_guard(ttm_bo_lru_cursor, _cursor, _man, _arg, _mem_type, _bulk)	\
++		for ((_bo) = ttm_bo_lru_cursor_first(_cursor);			\
++			   !IS_ERR_OR_NULL(_bo);				\
++			   (_bo) = ttm_bo_lru_cursor_next(_cursor))
++
+ #endif
+diff --git a/include/drm/ttm/ttm_resource.h b/include/drm/ttm/ttm_resource.h
+index e567b7ec8218..3e259e120fbf 100644
+--- a/include/drm/ttm/ttm_resource.h
++++ b/include/drm/ttm/ttm_resource.h
+@@ -316,6 +316,7 @@ struct ttm_lru_bulk_move_pos {
+ struct ttm_lru_bulk_move {
+ 	struct ttm_lru_bulk_move_pos pos[TTM_NUM_MEM_TYPES][TTM_MAX_BO_PRIORITY];
+ 	struct list_head cursor_list;
++	bool ordered;
+ };
+ 
+ /**
+@@ -439,7 +440,7 @@ ttm_resource_manager_cleanup(struct ttm_resource_manager *man)
+ 	}
+ }
+ 
+-void ttm_lru_bulk_move_init(struct ttm_lru_bulk_move *bulk);
++void ttm_lru_bulk_move_init(struct ttm_lru_bulk_move *bulk, bool ordered);
+ void ttm_lru_bulk_move_tail(struct ttm_lru_bulk_move *bulk);
+ void ttm_lru_bulk_move_fini(struct ttm_device *bdev,
+ 			    struct ttm_lru_bulk_move *bulk);
+@@ -491,7 +492,12 @@ void ttm_resource_manager_debug(struct ttm_resource_manager *man,
+ struct ttm_resource *
+ ttm_resource_manager_first(struct ttm_resource_cursor *cursor);
+ struct ttm_resource *
++ttm_resource_manager_first_on_bulk(struct ttm_resource_cursor *cursor,
++				   struct ttm_lru_bulk_move *bulk);
++struct ttm_resource *
+ ttm_resource_manager_next(struct ttm_resource_cursor *cursor);
++struct ttm_resource *
++ttm_resource_manager_next_on_bulk(struct ttm_resource_cursor *cursor);
+ 
+ struct ttm_resource *
+ ttm_lru_first_res_or_null(struct list_head *head);
+@@ -507,6 +513,10 @@ ttm_lru_first_res_or_null(struct list_head *head);
+ 	for (res = ttm_resource_manager_first(cursor); res;	\
+ 	     res = ttm_resource_manager_next(cursor))
+ 
++#define ttm_resource_manager_for_each_res_on_bulk(cursor, res, bulk)      \
++	for (res = ttm_resource_manager_first_on_bulk(cursor, bulk); res; \
++	     res = ttm_resource_manager_next_on_bulk(cursor))
++
+ struct ttm_kmap_iter *
+ ttm_kmap_iter_iomap_init(struct ttm_kmap_iter_iomap *iter_io,
+ 			 struct io_mapping *iomap,
+-- 
+2.55.0
+

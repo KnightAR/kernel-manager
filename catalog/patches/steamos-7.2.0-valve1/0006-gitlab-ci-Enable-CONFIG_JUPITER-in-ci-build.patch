@@ -1,0 +1,26 @@
+From c89ebc029826213231c0a8320e2cfc2d08708cbc Mon Sep 17 00:00:00 2001
+From: Gabriel Krisman Bertazi <krisman@collabora.com>
+Date: Tue, 30 Mar 2021 00:18:48 -0400
+Subject: [PATCH] gitlab-ci: Enable CONFIG_JUPITER in ci build
+
+CONFIG_JUPITER exposes a driver to manage the fan on jupiter.
+
+Signed-off-by: Gabriel Krisman Bertazi <krisman@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .config-fragment | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/.config-fragment b/.config-fragment
+index 211aa4328e8b..66d62276b778 100644
+--- a/.config-fragment
++++ b/.config-fragment
+@@ -40,3 +40,4 @@ CONFIG_RTW88_8723DE=y
+ CONFIG_RTW88_8821CE=y
+ CONFIG_RTW88_DEBUGFS=y
+ CONFIG_RTW88_DEBUGFS=y
++CONFIG_JUPITER=y
+\ No newline at end of file
+-- 
+2.55.0
+

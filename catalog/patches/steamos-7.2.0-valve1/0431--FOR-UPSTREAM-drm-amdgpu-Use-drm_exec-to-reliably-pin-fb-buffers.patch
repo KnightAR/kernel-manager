@@ -1,0 +1,683 @@
+From 0a1168691a43cbc40e76ec72ce6eefb6bc24c653 Mon Sep 17 00:00:00 2001
+From: Natalie Vock <natalie.vock@gmx.de>
+Date: Sun, 14 Jun 2026 12:16:16 +0200
+Subject: [PATCH] [FOR-UPSTREAM] drm/amdgpu: Use drm_exec to reliably pin fb
+ buffers
+
+Using drm_exec makes sure we can evict anything we want to pin
+framebuffers.
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd.c    |  2 +-
+ .../gpu/drm/amd/amdgpu/amdgpu_amdkfd_gpuvm.c  |  6 +-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_display.c   | 70 ++++++++++++-------
+ drivers/gpu/drm/amd/amdgpu/amdgpu_dma_buf.c   |  5 +-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_gart.c      |  2 +-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_gmc.c       |  2 +-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_object.c    | 15 ++--
+ drivers/gpu/drm/amd/amdgpu/amdgpu_object.h    |  4 +-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_userq.c     |  2 +-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_uvd.c       |  2 +-
+ drivers/gpu/drm/amd/amdgpu/amdgpu_vkms.c      |  2 +-
+ drivers/gpu/drm/amd/amdgpu/dce_v10_0.c        | 62 ++++++++++------
+ drivers/gpu/drm/amd/amdgpu/dce_v6_0.c         |  4 +-
+ drivers/gpu/drm/amd/amdgpu/dce_v8_0.c         |  4 +-
+ .../amd/display/amdgpu_dm/amdgpu_dm_plane.c   | 50 +++++++------
+ .../drm/amd/display/amdgpu_dm/amdgpu_dm_wb.c  | 45 +++++++-----
+ 16 files changed, 171 insertions(+), 106 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd.c
+index da325863ad76..f9a10e1bdcf9 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd.c
+@@ -381,7 +381,7 @@ int amdgpu_amdkfd_alloc_kernel_mem(struct amdgpu_device *adev, size_t size,
+ 		goto allocate_mem_reserve_bo_failed;
+ 	}
+ 
+-	r = amdgpu_bo_pin(bo, domain);
++	r = amdgpu_bo_pin(bo, NULL, domain);
+ 	if (r) {
+ 		dev_err(adev->dev, "(%d) failed to pin bo for amdkfd\n", r);
+ 		goto allocate_mem_pin_bo_failed;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd_gpuvm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd_gpuvm.c
+index f0f516a79424..228049541e2c 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd_gpuvm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd_gpuvm.c
+@@ -1531,7 +1531,7 @@ static int amdgpu_amdkfd_gpuvm_pin_bo(struct amdgpu_bo *bo, u32 domain)
+ 		}
+ 	}
+ 
+-	ret = amdgpu_bo_pin(bo, domain);
++	ret = amdgpu_bo_pin(bo, NULL, domain);
+ 	if (ret)
+ 		pr_err("Error in Pinning BO to domain: %d\n", domain);
+ 
+@@ -2241,7 +2241,7 @@ int amdgpu_amdkfd_map_gtt_bo_to_gart(struct amdgpu_bo *bo, struct amdgpu_bo **bo
+ 		goto err_reserve_bo_failed;
+ 	}
+ 
+-	ret = amdgpu_bo_pin(bo, AMDGPU_GEM_DOMAIN_GTT);
++	ret = amdgpu_bo_pin(bo, NULL, AMDGPU_GEM_DOMAIN_GTT);
+ 	if (ret) {
+ 		pr_err("Failed to pin bo. ret %d\n", ret);
+ 		goto err_pin_bo_failed;
+@@ -2303,7 +2303,7 @@ int amdgpu_amdkfd_gpuvm_map_gtt_bo_to_kernel(struct kgd_mem *mem,
+ 		goto bo_reserve_failed;
+ 	}
+ 
+-	ret = amdgpu_bo_pin(bo, AMDGPU_GEM_DOMAIN_GTT);
++	ret = amdgpu_bo_pin(bo, NULL, AMDGPU_GEM_DOMAIN_GTT);
+ 	if (ret) {
+ 		pr_err("Failed to pin bo. ret %d\n", ret);
+ 		goto pin_failed;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_display.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_display.c
+index f5cd68542442..d94522fc7253 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_display.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_display.c
+@@ -42,6 +42,7 @@
+ #include <drm/drm_damage_helper.h>
+ #include <drm/drm_drv.h>
+ #include <drm/drm_edid.h>
++#include <drm/drm_exec.h>
+ #include <drm/drm_fb_helper.h>
+ #include <drm/drm_gem_framebuffer_helper.h>
+ #include <drm/drm_fourcc.h>
+@@ -200,6 +201,7 @@ int amdgpu_display_crtc_page_flip_target(struct drm_crtc *crtc,
+ 	struct drm_gem_object *obj;
+ 	struct amdgpu_flip_work *work;
+ 	struct amdgpu_bo *new_abo;
++	struct drm_exec exec;
+ 	unsigned long flags;
+ 	u64 tiling_flags;
+ 	int i, r;
+@@ -227,20 +229,28 @@ int amdgpu_display_crtc_page_flip_target(struct drm_crtc *crtc,
+ 	new_abo = gem_to_amdgpu_bo(obj);
+ 
+ 	/* pin the new buffer */
+-	r = amdgpu_bo_reserve(new_abo, false);
+-	if (unlikely(r != 0)) {
+-		DRM_ERROR("failed to reserve new abo buffer before flip\n");
+-		goto cleanup;
+-	}
+-
+-	if (!adev->enable_virtual_display) {
+-		new_abo->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
+-		r = amdgpu_bo_pin(new_abo,
+-				  amdgpu_display_supported_domains(adev, new_abo->flags));
++	drm_exec_init(&exec, 0, 0);
++	drm_exec_until_all_locked(&exec) {
++		r = drm_exec_lock_obj(&exec, &new_abo->tbo.base);
++		drm_exec_retry_on_contention(&exec);
+ 		if (unlikely(r != 0)) {
+-			DRM_ERROR("failed to pin new abo buffer before flip\n");
++			DRM_ERROR(
++				"failed to reserve new abo buffer before flip\n");
+ 			goto unreserve;
+ 		}
++
++		if (!adev->enable_virtual_display) {
++			new_abo->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
++			r = amdgpu_bo_pin(new_abo, &exec,
++					  amdgpu_display_supported_domains(
++						  adev, new_abo->flags));
++			drm_exec_retry_on_contention(&exec);
++			if (unlikely(r != 0)) {
++				DRM_ERROR(
++					"failed to pin new abo buffer before flip\n");
++				goto unreserve;
++			}
++		}
+ 	}
+ 
+ 	r = amdgpu_ttm_alloc_gart(&new_abo->tbo);
+@@ -258,7 +268,7 @@ int amdgpu_display_crtc_page_flip_target(struct drm_crtc *crtc,
+ 	}
+ 
+ 	amdgpu_bo_get_tiling_flags(new_abo, &tiling_flags);
+-	amdgpu_bo_unreserve(new_abo);
++	drm_exec_fini(&exec);
+ 
+ 	if (!adev->enable_virtual_display)
+ 		work->base = amdgpu_bo_gpu_offset(new_abo);
+@@ -296,7 +306,7 @@ unpin:
+ 		amdgpu_bo_unpin(new_abo);
+ 
+ unreserve:
+-	amdgpu_bo_unreserve(new_abo);
++	drm_exec_fini(&exec);
+ 
+ cleanup:
+ 	amdgpu_bo_unref(&work->old_abo);
+@@ -1793,25 +1803,37 @@ int amdgpu_display_resume_helper(struct amdgpu_device *adev)
+ 	struct drm_connector *connector;
+ 	struct drm_connector_list_iter iter;
+ 	struct drm_crtc *crtc;
++	struct drm_exec exec;
+ 	int r;
+ 
+ 	/* pin cursors */
+ 	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+ 		struct amdgpu_crtc *amdgpu_crtc = to_amdgpu_crtc(crtc);
+ 
+-		if (amdgpu_crtc->cursor_bo && !adev->enable_virtual_display) {
+-			struct amdgpu_bo *aobj = gem_to_amdgpu_bo(amdgpu_crtc->cursor_bo);
++		if (!amdgpu_crtc->cursor_bo || adev->enable_virtual_display)
++			continue;
++		drm_exec_init(&exec, 0, 0);
+ 
+-			r = amdgpu_bo_reserve(aobj, true);
+-			if (r == 0) {
+-				aobj->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
+-				r = amdgpu_bo_pin(aobj, AMDGPU_GEM_DOMAIN_VRAM);
+-				if (r != 0)
+-					dev_err(adev->dev, "Failed to pin cursor BO (%d)\n", r);
+-				amdgpu_crtc->cursor_addr = amdgpu_bo_gpu_offset(aobj);
+-				amdgpu_bo_unreserve(aobj);
+-			}
++		drm_exec_until_all_locked(&exec)
++		{
++			r = drm_exec_lock_obj(&exec, amdgpu_crtc->cursor_bo);
++			drm_exec_retry_on_contention(&exec);
++			if (r)
++				goto err_exec;
++
++			struct amdgpu_bo *aobj = gem_to_amdgpu_bo(amdgpu_crtc->cursor_bo);
++			aobj->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
++			r = amdgpu_bo_pin(aobj, &exec, AMDGPU_GEM_DOMAIN_VRAM);
++			drm_exec_retry_on_contention(&exec);
++			if (r != 0)
++				dev_err(adev->dev,
++					"Failed to pin cursor BO (%d)\n", r);
++
++			amdgpu_crtc->cursor_addr = amdgpu_bo_gpu_offset(aobj);
+ 		}
++
++err_exec:
++		drm_exec_fini(&exec);
+ 	}
+ 
+ 	drm_helper_resume_force_mode(dev);
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_dma_buf.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_dma_buf.c
+index b33c300e26e2..eb96e6f5bd80 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_dma_buf.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_dma_buf.c
+@@ -144,7 +144,7 @@ static int amdgpu_dma_buf_pin(struct dma_buf_attachment *attach)
+ 	if (WARN_ON(!domains))
+ 		return -EINVAL;
+ 
+-	return amdgpu_bo_pin(bo, domains);
++	return amdgpu_bo_pin(bo, NULL, domains);
+ }
+ 
+ /**
+@@ -329,7 +329,8 @@ static int amdgpu_dma_buf_vmap(struct dma_buf *dma_buf, struct iosys_map *map)
+ 	 * domain is not that important as long as it's mapable. Using
+ 	 * GTT and VRAM should be compatible with most use cases.
+ 	 */
+-	ret = amdgpu_bo_pin(bo, AMDGPU_GEM_DOMAIN_GTT | AMDGPU_GEM_DOMAIN_VRAM);
++	ret = amdgpu_bo_pin(bo, NULL,
++			    AMDGPU_GEM_DOMAIN_GTT | AMDGPU_GEM_DOMAIN_VRAM);
+ 	if (ret)
+ 		return ret;
+ 	ret = drm_gem_dmabuf_vmap(dma_buf, map);
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_gart.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_gart.c
+index c4c21dbbbdbf..670bce86a050 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_gart.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_gart.c
+@@ -191,7 +191,7 @@ int amdgpu_gart_table_ram_alloc(struct amdgpu_device *adev)
+ 		goto error;
+ 	}
+ 
+-	ret = amdgpu_bo_pin(bo, AMDGPU_GEM_DOMAIN_GTT);
++	ret = amdgpu_bo_pin(bo, NULL, AMDGPU_GEM_DOMAIN_GTT);
+ 	WARN(ret, "Pinning the GART table failed");
+ 	if (ret)
+ 		goto error_resv;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_gmc.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_gmc.c
+index 5d6149ba7ab7..179c77a49000 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_gmc.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_gmc.c
+@@ -80,7 +80,7 @@ int amdgpu_gmc_pdb0_alloc(struct amdgpu_device *adev)
+ 	if (unlikely(r != 0))
+ 		goto bo_reserve_failure;
+ 
+-	r = amdgpu_bo_pin(adev->gmc.pdb0_bo, AMDGPU_GEM_DOMAIN_VRAM);
++	r = amdgpu_bo_pin(adev->gmc.pdb0_bo, NULL, AMDGPU_GEM_DOMAIN_VRAM);
+ 	if (r)
+ 		goto bo_pin_failure;
+ 	r = amdgpu_bo_kmap(adev->gmc.pdb0_bo, &adev->gmc.ptr_pdb0);
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c
+index 718937777e53..9a46fa9e6086 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_object.c
+@@ -277,7 +277,7 @@ int amdgpu_bo_create_reserved(struct amdgpu_device *adev,
+ 	}
+ 
+ 	if (free) {
+-		r = amdgpu_bo_pin(*bo_ptr, domain);
++		r = amdgpu_bo_pin(*bo_ptr, NULL, domain);
+ 		if (r) {
+ 			dev_err(adev->dev, "(%d) kernel bo pin failed\n", r);
+ 			goto error_unreserve;
+@@ -396,7 +396,7 @@ int amdgpu_bo_create_isp_user(struct amdgpu_device *adev,
+ 		return r;
+ 	}
+ 
+-	r = amdgpu_bo_pin(*bo, domain);
++	r = amdgpu_bo_pin(*bo, NULL, domain);
+ 	if (r) {
+ 		dev_err(adev->dev, "(%d) isp user bo pin failed\n", r);
+ 		goto error_unreserve;
+@@ -929,10 +929,14 @@ void amdgpu_bo_unref(struct amdgpu_bo **bo)
+  * Returns:
+  * 0 for success or a negative error code on failure.
+  */
+-int amdgpu_bo_pin(struct amdgpu_bo *bo, u32 domain)
++int amdgpu_bo_pin(struct amdgpu_bo *bo, struct drm_exec *exec, u32 domain)
+ {
+ 	struct amdgpu_device *adev = amdgpu_ttm_adev(bo->tbo.bdev);
+-	struct ttm_operation_ctx ctx = { false, false };
++	struct ttm_operation_ctx ctx = {
++		.interruptible = false,
++		.no_wait_gpu = false,
++		.exec = exec,
++	};
+ 	int r, i;
+ 
+ 	if (amdgpu_ttm_tt_get_usermm(bo->tbo.ttm))
+@@ -986,7 +990,8 @@ int amdgpu_bo_pin(struct amdgpu_bo *bo, u32 domain)
+ 
+ 	r = ttm_bo_validate(&bo->tbo, &bo->placement, &ctx);
+ 	if (unlikely(r)) {
+-		dev_err(adev->dev, "%p pin failed\n", bo);
++		if (r != -EDEADLOCK || !exec)
++			dev_err(adev->dev, "%p pin failed\n", bo);
+ 		goto error;
+ 	}
+ 
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_object.h b/drivers/gpu/drm/amd/amdgpu/amdgpu_object.h
+index 4d68732d6223..5d1f1c64418f 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_object.h
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_object.h
+@@ -36,6 +36,8 @@
+ #include <linux/mmu_notifier.h>
+ #endif
+ 
++struct drm_exec;
++
+ #define AMDGPU_BO_INVALID_OFFSET	LONG_MAX
+ #define AMDGPU_BO_MAX_PLACEMENTS	3
+ 
+@@ -283,7 +285,7 @@ void *amdgpu_bo_kptr(struct amdgpu_bo *bo);
+ void amdgpu_bo_kunmap(struct amdgpu_bo *bo);
+ struct amdgpu_bo *amdgpu_bo_ref(struct amdgpu_bo *bo);
+ void amdgpu_bo_unref(struct amdgpu_bo **bo);
+-int amdgpu_bo_pin(struct amdgpu_bo *bo, u32 domain);
++int amdgpu_bo_pin(struct amdgpu_bo *bo, struct drm_exec *exec, u32 domain);
+ void amdgpu_bo_unpin(struct amdgpu_bo *bo);
+ int amdgpu_bo_init(struct amdgpu_device *adev);
+ void amdgpu_bo_fini(struct amdgpu_device *adev);
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_userq.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_userq.c
+index b18d78720656..b940775b2ee2 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_userq.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_userq.c
+@@ -457,7 +457,7 @@ amdgpu_userq_get_doorbell_index(struct amdgpu_userq_mgr *uq_mgr,
+ 	}
+ 
+ 	/* Pin the BO before generating the index, unpin in queue destroy */
+-	r = amdgpu_bo_pin(db_obj->obj, AMDGPU_GEM_DOMAIN_DOORBELL);
++	r = amdgpu_bo_pin(db_obj->obj, NULL, AMDGPU_GEM_DOMAIN_DOORBELL);
+ 	if (r) {
+ 		drm_file_err(uq_mgr->file, "[Usermode queues] Failed to pin doorbell object\n");
+ 		goto unresv_bo;
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_uvd.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_uvd.c
+index de3dbc95e376..21f742622503 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_uvd.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_uvd.c
+@@ -162,7 +162,7 @@ static int amdgpu_uvd_create_msg_bo_helper(struct amdgpu_device *adev,
+ 	r = ttm_bo_validate(&bo->tbo, &bo->placement, &ctx);
+ 	if (r)
+ 		goto err;
+-	r = amdgpu_bo_pin(bo, AMDGPU_GEM_DOMAIN_VRAM);
++	r = amdgpu_bo_pin(bo, NULL, AMDGPU_GEM_DOMAIN_VRAM);
+ 	if (r)
+ 		goto err_pin;
+ 	r = amdgpu_bo_kmap(bo, &addr);
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_vkms.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_vkms.c
+index 170adaf7e76a..d922179209ba 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_vkms.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_vkms.c
+@@ -226,7 +226,7 @@ static int amdgpu_vkms_prepare_fb(struct drm_plane *plane,
+ 		domain = AMDGPU_GEM_DOMAIN_VRAM;
+ 
+ 	rbo->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
+-	r = amdgpu_bo_pin(rbo, domain);
++	r = amdgpu_bo_pin(rbo, NULL, domain);
+ 	if (unlikely(r != 0)) {
+ 		if (r != -ERESTARTSYS)
+ 			DRM_ERROR("Failed to pin framebuffer with error %d\n", r);
+diff --git a/drivers/gpu/drm/amd/amdgpu/dce_v10_0.c b/drivers/gpu/drm/amd/amdgpu/dce_v10_0.c
+index c8f465158e71..1fc1516999f8 100644
+--- a/drivers/gpu/drm/amd/amdgpu/dce_v10_0.c
++++ b/drivers/gpu/drm/amd/amdgpu/dce_v10_0.c
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include <drm/drm_edid.h>
++#include <drm/drm_exec.h>
+ #include <drm/drm_fourcc.h>
+ #include <drm/drm_modeset_helper.h>
+ #include <drm/drm_modeset_helper_vtables.h>
+@@ -1846,6 +1847,7 @@ static int dce_v10_0_crtc_do_set_base(struct drm_crtc *crtc,
+ 	struct drm_framebuffer *target_fb;
+ 	struct drm_gem_object *obj;
+ 	struct amdgpu_bo *abo;
++	struct drm_exec exec;
+ 	uint64_t fb_location, tiling_flags;
+ 	uint32_t fb_format, fb_pitch_pixels;
+ 	u32 fb_swap = REG_SET_FIELD(0, GRPH_SWAP_CNTL, GRPH_ENDIAN_SWAP, ENDIAN_NONE);
+@@ -1867,20 +1869,31 @@ static int dce_v10_0_crtc_do_set_base(struct drm_crtc *crtc,
+ 	 */
+ 	obj = target_fb->obj[0];
+ 	abo = gem_to_amdgpu_bo(obj);
+-	r = amdgpu_bo_reserve(abo, false);
+-	if (unlikely(r != 0))
+-		return r;
+ 
+ 	abo->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
+-	r = amdgpu_bo_pin(abo, AMDGPU_GEM_DOMAIN_VRAM);
+-	if (unlikely(r != 0)) {
+-		amdgpu_bo_unreserve(abo);
+-		return -EINVAL;
++
++	drm_exec_init(&exec, 0, 0);
++
++	drm_exec_until_all_locked(&exec) {
++		r = drm_exec_lock_obj(&exec, obj);
++		drm_exec_retry_on_contention(&exec);
++		if (unlikely(r != 0)) {
++			drm_exec_fini(&exec);
++			return r;
++		}
++
++		abo->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
++		r = amdgpu_bo_pin(abo, &exec, AMDGPU_GEM_DOMAIN_VRAM);
++		drm_exec_retry_on_contention(&exec);
++		if (unlikely(r != 0)) {
++			drm_exec_fini(&exec);
++			return -EINVAL;
++		}
+ 	}
+ 	fb_location = amdgpu_bo_gpu_offset(abo);
+ 
+ 	amdgpu_bo_get_tiling_flags(abo, &tiling_flags);
+-	amdgpu_bo_unreserve(abo);
++	drm_exec_fini(&exec);
+ 
+ 	pipe_config = AMDGPU_TILING_GET(tiling_flags, PIPE_CONFIG);
+ 
+@@ -2363,6 +2376,7 @@ static int dce_v10_0_crtc_cursor_set2(struct drm_crtc *crtc,
+ 	struct amdgpu_crtc *amdgpu_crtc = to_amdgpu_crtc(crtc);
+ 	struct drm_gem_object *obj;
+ 	struct amdgpu_bo *aobj;
++	struct drm_exec exec;
+ 	int ret;
+ 
+ 	if (!handle) {
+@@ -2385,20 +2399,28 @@ static int dce_v10_0_crtc_cursor_set2(struct drm_crtc *crtc,
+ 	}
+ 
+ 	aobj = gem_to_amdgpu_bo(obj);
+-	ret = amdgpu_bo_reserve(aobj, false);
+-	if (ret != 0) {
+-		drm_gem_object_put(obj);
+-		return ret;
+-	}
+ 
+-	aobj->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
+-	ret = amdgpu_bo_pin(aobj, AMDGPU_GEM_DOMAIN_VRAM);
+-	amdgpu_bo_unreserve(aobj);
+-	if (ret) {
+-		DRM_ERROR("Failed to pin new cursor BO (%d)\n", ret);
+-		drm_gem_object_put(obj);
+-		return ret;
++	drm_exec_init(&exec, 0, 0);
++	drm_exec_until_all_locked(&exec) {
++		ret = drm_exec_lock_obj(&exec, obj);
++		drm_exec_retry_on_contention(&exec);
++		if (unlikely(ret != 0)) {
++			drm_exec_fini(&exec);
++			drm_gem_object_put(obj);
++			return ret;
++		}
++
++		aobj->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
++		ret = amdgpu_bo_pin(aobj, &exec, AMDGPU_GEM_DOMAIN_VRAM);
++		drm_exec_retry_on_contention(&exec);
++		if (unlikely(ret != 0)) {
++			DRM_ERROR("Failed to pin new cursor BO (%d)\n", ret);
++			drm_exec_fini(&exec);
++			drm_gem_object_put(obj);
++			return ret;
++		}
+ 	}
++	drm_exec_fini(&exec);
+ 	amdgpu_crtc->cursor_addr = amdgpu_bo_gpu_offset(aobj);
+ 
+ 	dce_v10_0_lock_cursor(crtc, true);
+diff --git a/drivers/gpu/drm/amd/amdgpu/dce_v6_0.c b/drivers/gpu/drm/amd/amdgpu/dce_v6_0.c
+index 58d0da5c2a74..5316808dd15a 100644
+--- a/drivers/gpu/drm/amd/amdgpu/dce_v6_0.c
++++ b/drivers/gpu/drm/amd/amdgpu/dce_v6_0.c
+@@ -1909,7 +1909,7 @@ static int dce_v6_0_crtc_do_set_base(struct drm_crtc *crtc,
+ 		return r;
+ 
+ 	abo->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
+-	r = amdgpu_bo_pin(abo, AMDGPU_GEM_DOMAIN_VRAM);
++	r = amdgpu_bo_pin(abo, NULL, AMDGPU_GEM_DOMAIN_VRAM);
+ 	if (unlikely(r != 0)) {
+ 		amdgpu_bo_unreserve(abo);
+ 		return -EINVAL;
+@@ -2365,7 +2365,7 @@ static int dce_v6_0_crtc_cursor_set2(struct drm_crtc *crtc,
+ 	}
+ 
+ 	aobj->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
+-	ret = amdgpu_bo_pin(aobj, AMDGPU_GEM_DOMAIN_VRAM);
++	ret = amdgpu_bo_pin(aobj, NULL, AMDGPU_GEM_DOMAIN_VRAM);
+ 	amdgpu_bo_unreserve(aobj);
+ 	if (ret) {
+ 		DRM_ERROR("Failed to pin new cursor BO (%d)\n", ret);
+diff --git a/drivers/gpu/drm/amd/amdgpu/dce_v8_0.c b/drivers/gpu/drm/amd/amdgpu/dce_v8_0.c
+index 6d19f6d94d25..d4ae6fb50a1b 100644
+--- a/drivers/gpu/drm/amd/amdgpu/dce_v8_0.c
++++ b/drivers/gpu/drm/amd/amdgpu/dce_v8_0.c
+@@ -1819,7 +1819,7 @@ static int dce_v8_0_crtc_do_set_base(struct drm_crtc *crtc,
+ 		return r;
+ 
+ 	abo->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
+-	r = amdgpu_bo_pin(abo, AMDGPU_GEM_DOMAIN_VRAM);
++	r = amdgpu_bo_pin(abo, NULL, AMDGPU_GEM_DOMAIN_VRAM);
+ 	if (unlikely(r != 0)) {
+ 		amdgpu_bo_unreserve(abo);
+ 		return -EINVAL;
+@@ -2311,7 +2311,7 @@ static int dce_v8_0_crtc_cursor_set2(struct drm_crtc *crtc,
+ 	}
+ 
+ 	aobj->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
+-	ret = amdgpu_bo_pin(aobj, AMDGPU_GEM_DOMAIN_VRAM);
++	ret = amdgpu_bo_pin(aobj, NULL, AMDGPU_GEM_DOMAIN_VRAM);
+ 	amdgpu_bo_unreserve(aobj);
+ 	if (ret) {
+ 		DRM_ERROR("Failed to pin new cursor BO (%d)\n", ret);
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
+index 56d012b51d95..d7161d188143 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
+@@ -26,6 +26,7 @@
+ 
+ #include <drm/drm_atomic_helper.h>
+ #include <drm/drm_blend.h>
++#include <drm/drm_exec.h>
+ #include "drm/drm_framebuffer.h"
+ #include <drm/drm_gem_atomic_helper.h>
+ #include <drm/drm_plane_helper.h>
+@@ -930,6 +931,7 @@ static int amdgpu_dm_plane_helper_prepare_fb(struct drm_plane *plane,
+ 	struct drm_gem_object *obj;
+ 	struct amdgpu_device *adev;
+ 	struct amdgpu_bo *rbo;
++	struct drm_exec exec;
+ 	struct dm_plane_state *dm_plane_state_new, *dm_plane_state_old;
+ 	uint32_t domain;
+ 	int r;
+@@ -948,27 +950,31 @@ static int amdgpu_dm_plane_helper_prepare_fb(struct drm_plane *plane,
+ 
+ 	rbo = gem_to_amdgpu_bo(obj);
+ 	adev = amdgpu_ttm_adev(rbo->tbo.bdev);
+-	r = amdgpu_bo_reserve(rbo, true);
+-	if (r) {
+-		drm_err(adev_to_drm(adev), "fail to reserve bo (%d)\n", r);
+-		return r;
+-	}
+-
+-	r = dma_resv_reserve_fences(rbo->tbo.base.resv, TTM_NUM_MOVE_FENCES);
+-	if (r)
+-		goto error_unlock;
+ 
+-	if (plane->type != DRM_PLANE_TYPE_CURSOR)
+-		domain = amdgpu_display_supported_domains(adev, rbo->flags);
+-	else
+-		domain = AMDGPU_GEM_DOMAIN_VRAM;
+-
+-	rbo->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
+-	r = amdgpu_bo_pin(rbo, domain);
+-	if (unlikely(r != 0)) {
+-		if (r != -ERESTARTSYS)
+-			DRM_ERROR("Failed to pin framebuffer with error %d\n", r);
+-		goto error_unlock;
++	drm_exec_init(&exec, 0, 0);
++	drm_exec_until_all_locked(&exec)
++	{
++		r = drm_exec_prepare_obj(&exec, obj, TTM_NUM_MOVE_FENCES);
++		drm_exec_retry_on_contention(&exec);
++		if (r)
++			goto error_unlock;
++
++		if (plane->type != DRM_PLANE_TYPE_CURSOR)
++			domain = amdgpu_display_supported_domains(adev,
++								  rbo->flags);
++		else
++			domain = AMDGPU_GEM_DOMAIN_VRAM;
++
++		rbo->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
++		r = amdgpu_bo_pin(rbo, &exec, domain);
++		drm_exec_retry_on_contention(&exec);
++		if (unlikely(r != 0)) {
++			if (r != -ERESTARTSYS)
++				DRM_ERROR(
++					"Failed to pin framebuffer with error %d\n",
++					r);
++			goto error_unlock;
++		}
+ 	}
+ 
+ 	r = amdgpu_ttm_alloc_gart(&rbo->tbo);
+@@ -981,7 +987,7 @@ static int amdgpu_dm_plane_helper_prepare_fb(struct drm_plane *plane,
+ 	if (unlikely(r != 0))
+ 		goto error_unpin;
+ 
+-	amdgpu_bo_unreserve(rbo);
++	drm_exec_fini(&exec);
+ 
+ 	afb->address = amdgpu_bo_gpu_offset(rbo);
+ 
+@@ -1017,7 +1023,7 @@ error_unpin:
+ 	amdgpu_bo_unpin(rbo);
+ 
+ error_unlock:
+-	amdgpu_bo_unreserve(rbo);
++	drm_exec_fini(&exec);
+ 	return r;
+ }
+ 
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_wb.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_wb.c
+index 110f0173eee6..83f49ffe5a2b 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_wb.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_wb.c
+@@ -33,6 +33,7 @@
+ #include "dc.h"
+ 
+ #include <drm/drm_edid.h>
++#include <drm/drm_exec.h>
+ #include <drm/drm_atomic_state_helper.h>
+ #include <drm/drm_modeset_helper_vtables.h>
+ 
+@@ -87,6 +88,7 @@ static int amdgpu_dm_wb_prepare_job(struct drm_writeback_connector *wb_connector
+ 	struct drm_gem_object *obj;
+ 	struct amdgpu_device *adev;
+ 	struct amdgpu_bo *rbo;
++	struct drm_exec exec;
+ 	uint32_t domain;
+ 	int r;
+ 
+@@ -100,24 +102,29 @@ static int amdgpu_dm_wb_prepare_job(struct drm_writeback_connector *wb_connector
+ 	rbo = gem_to_amdgpu_bo(obj);
+ 	adev = amdgpu_ttm_adev(rbo->tbo.bdev);
+ 
+-	r = amdgpu_bo_reserve(rbo, true);
+-	if (r) {
+-		drm_err(adev_to_drm(adev), "fail to reserve bo (%d)\n", r);
+-		return r;
+-	}
+-
+-	r = dma_resv_reserve_fences(rbo->tbo.base.resv, TTM_NUM_MOVE_FENCES);
+-	if (r)
+-		goto error_unlock;
+-
+-	domain = amdgpu_display_supported_domains(adev, rbo->flags);
+-
+-	rbo->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
+-	r = amdgpu_bo_pin(rbo, domain);
+-	if (unlikely(r != 0)) {
+-		if (r != -ERESTARTSYS)
+-			DRM_ERROR("Failed to pin framebuffer with error %d\n", r);
+-		goto error_unlock;
++	drm_exec_init(&exec, 0, 0);
++	drm_exec_until_all_locked(&exec)
++	{
++		r = drm_exec_prepare_obj(&exec, obj, TTM_NUM_MOVE_FENCES);
++		drm_exec_retry_on_contention(&exec);
++		if (r) {
++			drm_err(adev_to_drm(adev),
++				"Failed to prepare framebuffer BO (%d)\n", r);
++			goto error_unlock;
++		}
++
++		domain = amdgpu_display_supported_domains(adev, rbo->flags);
++
++		rbo->flags |= AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS;
++		r = amdgpu_bo_pin(rbo, &exec, domain);
++		drm_exec_retry_on_contention(&exec);
++		if (unlikely(r != 0)) {
++			if (r != -ERESTARTSYS)
++				DRM_ERROR(
++					"Failed to pin framebuffer with error %d\n",
++					r);
++			goto error_unlock;
++		}
+ 	}
+ 
+ 	r = amdgpu_ttm_alloc_gart(&rbo->tbo);
+@@ -126,7 +133,7 @@ static int amdgpu_dm_wb_prepare_job(struct drm_writeback_connector *wb_connector
+ 		goto error_unpin;
+ 	}
+ 
+-	amdgpu_bo_unreserve(rbo);
++	drm_exec_fini(&exec);
+ 
+ 	afb->address = amdgpu_bo_gpu_offset(rbo);
+ 
+-- 
+2.55.0
+

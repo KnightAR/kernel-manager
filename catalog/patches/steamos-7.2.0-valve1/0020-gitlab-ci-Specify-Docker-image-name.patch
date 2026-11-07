@@ -1,0 +1,32 @@
+From f93cb2790c53cbb150cb85269a606da117155027 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Mon, 20 Mar 2023 21:41:18 +0200
+Subject: [PATCH] gitlab-ci: Specify Docker image name
+
+Recently, the CI infrastructure seems to have started to use Alpine
+images by default, instead of Debian.
+
+Explicitly specify the image name and don't rely on the CI runner's
+(arbitrary) default anymore.
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index feba527ce0bb..64b3c02e7cc8 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -17,6 +17,7 @@ stages:
+ 
+ kernel build:
+   stage: build
++  image: debian:buster-slim
+   tags:
+     - autoscaled
+ 
+-- 
+2.55.0
+

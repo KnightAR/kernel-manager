@@ -1,0 +1,56 @@
+From 239892e2cbb83c03623c1f7f42882a6e1beb68bb Mon Sep 17 00:00:00 2001
+From: Muhammad Usama Anjum <usama.anjum@collabora.com>
+Date: Fri, 24 Feb 2023 09:41:37 +0500
+Subject: [PATCH] gitlab-ci: remove perf bench futex2 tests
+
+These tests haven't been enabled for 5.13. Lets remove perf build and
+don't run these tests by reverting "GitlabCI: kernel_test.sh: Add futex2 perf tests"
+
+Signed-off-by: Muhammad Usama Anjum <usama.anjum@collabora.com>
+(cherry picked from commit 3d2095f34cb5ea03827f5c5f504f89a6fddb60b0)
+[amend commit subject]
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ kernel_test.sh | 25 -------------------------
+ 1 file changed, 25 deletions(-)
+
+diff --git a/kernel_test.sh b/kernel_test.sh
+index 848c30ab932f..50d09f16ac75 100644
+--- a/kernel_test.sh
++++ b/kernel_test.sh
+@@ -15,31 +15,6 @@ echo -e "\t\t\t\t Starting syscall_user_dispatch:sud_benchmark Tests"
+ ./sud_benchmark 
+ echo -e "\t\t\t\t Completed syscall_user_dispatch:sud_benchmark Tests"
+ echo "========================================================================" 
+-echo -e "\t\t\t\t Build Perf benchmark"
+-echo "========================================================================" 
+-cd /mnt
+-make headers_install INSTALL_HDR_PATH=/usr
+-echo "grep FUTEX_32"
+-grep FUTEX_32 /usr/include/linux/futex.h
+-cd /mnt/tools/perf/ && make
+-
+-echo -e "\t\t\t\t Completed perf benchmark build" 
+-echo "========================================================================" 
+-echo -e "\t\t\t\t Run Perf benchmark"
+-echo "========================================================================" 
+-
+-./perf bench futex2 hash -s
+-./perf bench futex2 hash -s -S
+-./perf bench -r 50 futex2 wake -s
+-./perf bench -r 50 futex2 wake -s -S
+-./perf bench -r 50 futex2 wake-parallel -s
+-./perf bench -r 50 futex2 wake-parallel -s -S
+-./perf bench -r 50 futex2 wake -s -t 1000
+-./perf bench -r 50 futex2 wake -s -S  -t 1000
+-./perf bench -r 50 futex2 wake-parallel -s -t 1000
+-./perf bench -r 50 futex2 wake-parallel -s -S -t 1000
+-
+-echo -e "\t\t\t\t Completed perf run" 
+ }
+ 
+ start_test 2>&1 | tee -a /mnt/kernel_results.log
+-- 
+2.55.0
+

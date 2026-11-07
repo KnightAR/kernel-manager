@@ -1,0 +1,19 @@
+{
+  "Package": "linux-headers-7.1.5-76070105-generic",
+  "Architecture": "amd64",
+  "Version": "7.1.5-76070105.202607241434~1787955023~24.04~38a419f",
+  "Priority": "optional",
+  "Section": "devel",
+  "Source": "linux",
+  "Maintainer": "Ubuntu Kernel Team <kernel-team@lists.ubuntu.com>",
+  "Installed-Size": "31344",
+  "Provides": "linux-headers, linux-headers-3.0",
+  "Depends": "linux-headers-7.1.5-76070105, libc6 (>= 2.38), libdw1t64 (>= 0.171), libelf1t64 (>= 0.144), libgcc-s1 (>= 4.2), libssl3t64 (>= 3.0.0), zlib1g (>= 1:1.2.3.3)",
+  "Filename": "pool/noble/linux/38a419fc95c5eae36afa2f13e459a7fc4f4a68f5/linux-headers-7.1.5-76070105-generic_7.1.5-76070105.202607241434~1787955023~24.04~38a419f_amd64.deb",
+  "Size": "4139828",
+  "MD5sum": "10ed7845e9e015b86bd006dcda4e223f",
+  "SHA1": "e18a28f3021038b9558dd3862d3d09f3a8196ef0",
+  "SHA256": "09f3405519f322afb7ed78b31fde71c25204a3ab0b8def006e93e11dc7a6101e",
+  "SHA512": "bc5f0c37246513b82b38d38d0cfcfcac763e1df0bff832a6e2e73a8ead061d665d04fae772640b838fe584db09937f1d499484ed24d04d9b4a608afa42daffda",
+  "Description": "Linux kernel headers for version 7.1.5\nThis package provides kernel header files for version 7.1.5.\n.\nThis is for sites that want the latest kernel headers.  Please read\n/usr/share/doc/linux-headers-7.1.5-76070105/debian.README.gz for details."
+}

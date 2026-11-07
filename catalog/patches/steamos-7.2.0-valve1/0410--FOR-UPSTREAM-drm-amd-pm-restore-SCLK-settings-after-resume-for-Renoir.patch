@@ -1,0 +1,91 @@
+From 588fb2bb8e6f56c4751505d988f1b38be388e66f Mon Sep 17 00:00:00 2001
+From: Matthew Schwartz <matthew.schwartz@linux.dev>
+Date: Thu, 23 Jul 2026 12:06:22 -0700
+Subject: [PATCH] [FOR-UPSTREAM] drm/amd/pm: restore SCLK settings after resume
+ for Renoir
+
+User-configured SCLK frequencies from pp_od_clk_voltage do not persist
+across suspend/resume on Renoir. On resume, smu_late_init() calls
+renoir_set_fine_grain_gfx_freq_parameters(), which resets the actual gfx
+frequencies to zero before they can be re-applied.
+
+Preserve the user-configured values across resume and add a
+restore_user_od_settings callback to re-send them.
+
+Signed-off-by: Matthew Schwartz <matthew.schwartz@linux.dev>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .../gpu/drm/amd/pm/swsmu/smu12/renoir_ppt.c   | 36 +++++++++++++++++--
+ 1 file changed, 34 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/pm/swsmu/smu12/renoir_ppt.c b/drivers/gpu/drm/amd/pm/swsmu/smu12/renoir_ppt.c
+index 175c44190caa..ea2608c670ab 100644
+--- a/drivers/gpu/drm/amd/pm/swsmu/smu12/renoir_ppt.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/smu12/renoir_ppt.c
+@@ -451,6 +451,12 @@ static int renoir_od_edit_dpm_table(struct smu_context *smu,
+ 				dev_err(smu->adev->dev, "Set soft max sclk failed!");
+ 				return ret;
+ 			}
++
++			if (smu->gfx_actual_hard_min_freq != smu->gfx_default_hard_min_freq ||
++			    smu->gfx_actual_soft_max_freq != smu->gfx_default_soft_max_freq)
++				smu->user_dpm_profile.user_od = true;
++			else
++				smu->user_dpm_profile.user_od = false;
+ 		}
+ 		break;
+ 	default:
+@@ -460,6 +466,29 @@ static int renoir_od_edit_dpm_table(struct smu_context *smu,
+ 	return ret;
+ }
+ 
++static int renoir_restore_user_od_settings(struct smu_context *smu)
++{
++	int ret;
++
++	ret = smu_cmn_send_smc_msg_with_param(smu, SMU_MSG_SetHardMinGfxClk,
++					      smu->gfx_actual_hard_min_freq,
++					      NULL);
++	if (ret) {
++		dev_err(smu->adev->dev, "Failed to restore hard min sclk!\n");
++		return ret;
++	}
++
++	ret = smu_cmn_send_smc_msg_with_param(smu, SMU_MSG_SetSoftMaxGfxClk,
++					      smu->gfx_actual_soft_max_freq,
++					      NULL);
++	if (ret) {
++		dev_err(smu->adev->dev, "Failed to restore soft max sclk!\n");
++		return ret;
++	}
++
++	return 0;
++}
++
+ static int renoir_set_fine_grain_gfx_freq_parameters(struct smu_context *smu)
+ {
+ 	uint32_t min = 0, max = 0;
+@@ -478,8 +507,10 @@ static int renoir_set_fine_grain_gfx_freq_parameters(struct smu_context *smu)
+ 
+ 	smu->gfx_default_hard_min_freq = min;
+ 	smu->gfx_default_soft_max_freq = max;
+-	smu->gfx_actual_hard_min_freq = 0;
+-	smu->gfx_actual_soft_max_freq = 0;
++	if (smu->gfx_actual_hard_min_freq == 0)
++		smu->gfx_actual_hard_min_freq = smu->gfx_default_hard_min_freq;
++	if (smu->gfx_actual_soft_max_freq == 0)
++		smu->gfx_actual_soft_max_freq = smu->gfx_default_soft_max_freq;
+ 
+ 	return 0;
+ }
+@@ -1479,6 +1510,7 @@ static const struct pptable_funcs renoir_ppt_funcs = {
+ 	.get_gpu_metrics = renoir_get_gpu_metrics,
+ 	.gfx_state_change_set = renoir_gfx_state_change_set,
+ 	.set_fine_grain_gfx_freq_parameters = renoir_set_fine_grain_gfx_freq_parameters,
++	.restore_user_od_settings = renoir_restore_user_od_settings,
+ 	.od_edit_dpm_table = renoir_od_edit_dpm_table,
+ 	.get_vbios_bootup_values = smu_v12_0_get_vbios_bootup_values,
+ };
+-- 
+2.55.0
+

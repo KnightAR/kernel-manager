@@ -1,0 +1,60 @@
+From 06e2fb9f13c664635f2780f9d271921a552f244e Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Tue, 7 Jul 2026 17:10:51 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: 8922d: set ANA CLK enter to
+ 500KHz
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+To power save, change the clock of ANA hardware from 12MHz to 500KHz.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260707091056.42771-11-pkshih@realtek.com
+(cherry picked from commit b7911466b6dbba6df7c282044b65eaa8700584cb)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/mac.h      |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8922d.c | 13 +++++++++++++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/mac.h b/drivers/net/wireless/realtek/rtw89/mac.h
+index f85c14ca0f35..a5f1694af91a 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac.h
++++ b/drivers/net/wireless/realtek/rtw89/mac.h
+@@ -1680,6 +1680,7 @@ enum rtw89_mac_xtal_si_offset {
+ 	XTAL_SI_PWR_CUT = 0x10,
+ #define XTAL_SI_SMALL_PWR_CUT	BIT(0)
+ #define XTAL_SI_BIG_PWR_CUT	BIT(1)
++	XTAL_SI_AONLDO_CTRL = 0x10,
+ 	XTAL_SI_XTAL_DRV = 0x15,
+ #define XTAL_SI_DRV_LATCH	BIT(4)
+ 	XTAL_SI_XTAL_PLL = 0x16,
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922d.c b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+index 36b9b529195d..8ca07aeb377a 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922d.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+@@ -535,6 +535,19 @@ begin:
+ 	rtw89_write32_set(rtwdev, R_BE_SYS_PW_CTRL, B_BE_EN_WLON);
+ 	rtw89_write32_set(rtwdev, R_BE_WLRESUME_CTRL, B_BE_LPSROP_CMAC0 |
+ 						      B_BE_LPSROP_CMAC1);
++
++	if (hal->aid == RTL8922D_AID7102) {
++		ret = rtw89_mac_write_xtal_si(rtwdev, XTAL_SI_AONLDO_CTRL, 0, 0x20);
++		if (ret)
++			return ret;
++
++		udelay(1);
++
++		ret = rtw89_mac_write_xtal_si(rtwdev, XTAL_SI_AONLDO_CTRL, 0, 0x40);
++		if (ret)
++			return ret;
++	}
++
+ 	rtw89_write32_set(rtwdev, R_BE_SYS_PW_CTRL, B_BE_APFN_ONMAC);
+ 
+ 	ret = read_poll_timeout(rtw89_read32, val32, !(val32 & B_BE_APFN_ONMAC),
+-- 
+2.55.0
+

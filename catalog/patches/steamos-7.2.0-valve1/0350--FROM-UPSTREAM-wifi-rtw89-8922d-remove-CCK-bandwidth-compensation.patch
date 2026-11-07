@@ -1,0 +1,40 @@
+From 5203e5961cc95bad57f0dec0bf743459ad50045e Mon Sep 17 00:00:00 2001
+From: Eric Huang <echuang@realtek.com>
+Date: Tue, 7 Jul 2026 17:10:42 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: 8922d: remove CCK bandwidth
+ compensation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Remove the 40MHz bandwidth compensation from CCK efuse gain calculation.
+The design no longer requires the +3dB compensation for 40MHz channels.
+
+Signed-off-by: Eric Huang <echuang@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260707091056.42771-2-pkshih@realtek.com
+(cherry picked from commit be8aedb68c9645d5b76f262f7efc7e6a5581bc9a)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/rtw8922d.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922d.c b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+index f78d6d46e65f..625f8d675f08 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922d.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+@@ -1634,10 +1634,6 @@ static void rtw8922d_calc_rx_gain_normal_cck(struct rtw89_dev *rtwdev,
+ 	s8 rx_gain_offset;
+ 
+ 	rx_gain_offset = -rtw8922d_get_rx_gain_by_chan(rtwdev, chan, path, true);
+-
+-	if (chan->band_width == RTW89_CHANNEL_WIDTH_40)
+-		rx_gain_offset += (3 << 2); /* compensate RPL loss of 3dB */
+-
+ 	calc->cck_mean_gain_bias = (rx_gain_offset & 0x3) << 1;
+ 	calc->cck_rpl_ofst = (rx_gain_offset >> 2) + gain->cck_rpl_base[phy_idx];
+ }
+-- 
+2.55.0
+

@@ -1,0 +1,287 @@
+From fce3db9d6ed37125e7a45298cef58632ccd7c3ca Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Tue, 7 Jul 2026 17:10:50 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: add thermal protect by digital
+ voltage reduction
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The temperature is rising when WiFi does high throughput, and reduce
+voltage is a way to ease temperature.
+
+The existing method to do thermal protect is to reduce TX duty, which
+can affect throughput obviously. Before doing reduce TX duty (with -20
+thermal value offset), driver does voltage reduction first, which doesn't
+affect throughput but lower power consumption.
+
+The voltage gram of register is 0.01 voltage, and the suggested maximum
+reduction is 6 grams, which driver defines 6 as maximum voltage level.
+When thermal value is over threshold, driver will try to adjust level and
+corresponding register value. It should be adjust grams one by one with
+additional 50 ms delay to ensure hardware work properly.
+
+A note that the voltage must reset to normal value before entering power
+save mode, otherwise WiFi card might get lost. Since it takes 50 ms delay
+for each gram to adjust voltage, we stop to enter power save if protect
+level is not zero.
+
+By the way, adjust thermal threshold to 0xB4 as desired.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260707091056.42771-10-pkshih@realtek.com
+(cherry picked from commit 47ad03f1eca5ddbc44562b9a4add5003fdca34c7)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/core.c     |  9 +++++
+ drivers/net/wireless/realtek/rtw89/core.h     |  4 ++
+ drivers/net/wireless/realtek/rtw89/debug.c    |  1 +
+ drivers/net/wireless/realtek/rtw89/mac.c      |  3 ++
+ drivers/net/wireless/realtek/rtw89/mac.h      | 24 ++++++++++++
+ drivers/net/wireless/realtek/rtw89/mac_be.c   | 38 +++++++++++++++++++
+ drivers/net/wireless/realtek/rtw89/phy.c      | 27 +++++++++++++
+ drivers/net/wireless/realtek/rtw89/rtw8922d.c |  2 +-
+ 8 files changed, 107 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/core.c b/drivers/net/wireless/realtek/rtw89/core.c
+index 5d35f13a1ea6..0343cd1a0ee1 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.c
++++ b/drivers/net/wireless/realtek/rtw89/core.c
+@@ -5236,9 +5236,18 @@ static bool rtw89_traffic_stats_track(struct rtw89_dev *rtwdev)
+ static void rtw89_enter_lps_track(struct rtw89_dev *rtwdev,
+ 				  enum rtw89_tfc_interval interval)
+ {
++	struct rtw89_hal *hal = &rtwdev->hal;
+ 	struct ieee80211_vif *vif;
+ 	struct rtw89_vif *rtwvif;
+ 
++	/*
++	 * If vcore level is set, temperature is high and voltage is low. As
++	 * entering power save must reset voltage to default, avoid power save
++	 * until vcore decreases to zero resulting from temperature becomes low.
++	 */
++	if (hal->thermal_prot_vlv)
++		return;
++
+ 	rtw89_for_each_rtwvif(rtwdev, rtwvif) {
+ 		if (rtwvif->tdls_peer)
+ 			continue;
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index dbb9e8040947..409a06a0ab10 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -5523,10 +5523,13 @@ enum rtw89_dm_type {
+ 	RTW89_DM_HW_SCAN,
+ 	RTW89_DM_INACTIVE_PS,
+ 	RTW89_DM_DIG_PD,
++	RTW89_DM_VCORE,
+ };
+ 
+ #define RTW89_THERMAL_PROT_LV_MAX 5
+ #define RTW89_THERMAL_PROT_STEP 5 /* -5% for each level */
++#define RTW89_THERMAL_PROT_VLV_MAX 6
++#define RTW89_THERMAL_PROT_VLV_TH_OFFSET 20
+ 
+ struct rtw89_hal {
+ 	u32 rx_fltr;
+@@ -5567,6 +5570,7 @@ struct rtw89_hal {
+ 
+ 	u8 thermal_prot_vmax;
+ 	u8 thermal_prot_vmin;
++	u8 thermal_prot_vlv; /* 0 ~ RTW89_THERMAL_PROT_VLV_MAX (6) */
+ 
+ 	u8 fixed_dig_pd_th; /* v = (X(dBm) + 102)/2 */
+ 	s8 fixed_dig_cck_pd_th; /* dBm */
+diff --git a/drivers/net/wireless/realtek/rtw89/debug.c b/drivers/net/wireless/realtek/rtw89/debug.c
+index 5786120602ab..e42dc5707576 100644
+--- a/drivers/net/wireless/realtek/rtw89/debug.c
++++ b/drivers/net/wireless/realtek/rtw89/debug.c
+@@ -4778,6 +4778,7 @@ static const struct rtw89_disabled_dm_info {
+ 	DM_INFO(HW_SCAN),
+ 	DM_INFO(INACTIVE_PS),
+ 	DM_INFO(DIG_PD),
++	DM_INFO(VCORE),
+ };
+ 
+ static ssize_t
+diff --git a/drivers/net/wireless/realtek/rtw89/mac.c b/drivers/net/wireless/realtek/rtw89/mac.c
+index f5e55e6be119..6e3da5e4a1b3 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac.c
++++ b/drivers/net/wireless/realtek/rtw89/mac.c
+@@ -1602,6 +1602,8 @@ int rtw89_mac_pwr_on(struct rtw89_dev *rtwdev)
+ 
+ void rtw89_mac_pwr_off(struct rtw89_dev *rtwdev)
+ {
++	rtw89_mac_set_vcore_reset(rtwdev);
++
+ 	rtw89_mac_power_switch(rtwdev, false);
+ }
+ 
+@@ -7477,6 +7479,7 @@ const struct rtw89_mac_gen_def rtw89_mac_gen_ax = {
+ 	.cfg_ppdu_status = rtw89_mac_cfg_ppdu_status_ax,
+ 	.cfg_phy_rpt = NULL,
+ 	.set_edcca_mode = NULL,
++	.set_vcore_cfg = NULL,
+ 
+ 	.dle_mix_cfg = dle_mix_cfg_ax,
+ 	.chk_dle_rdy = chk_dle_rdy_ax,
+diff --git a/drivers/net/wireless/realtek/rtw89/mac.h b/drivers/net/wireless/realtek/rtw89/mac.h
+index 8bbe49492d4c..f85c14ca0f35 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac.h
++++ b/drivers/net/wireless/realtek/rtw89/mac.h
+@@ -1100,6 +1100,7 @@ struct rtw89_mac_gen_def {
+ 	int (*cfg_ppdu_status)(struct rtw89_dev *rtwdev, u8 mac_idx, bool enable);
+ 	void (*cfg_phy_rpt)(struct rtw89_dev *rtwdev, u8 mac_idx, bool enable);
+ 	void (*set_edcca_mode)(struct rtw89_dev *rtwdev, u8 mac_idx, bool normal);
++	void (*set_vcore_cfg)(struct rtw89_dev *rtwdev, u8 vlv);
+ 
+ 	int (*dle_mix_cfg)(struct rtw89_dev *rtwdev, const struct rtw89_dle_mem *cfg);
+ 	int (*chk_dle_rdy)(struct rtw89_dev *rtwdev, bool wde_or_ple);
+@@ -1459,6 +1460,29 @@ void rtw89_mac_set_edcca_mode(struct rtw89_dev *rtwdev, u8 mac_idx, bool normal)
+ 	mac->set_edcca_mode(rtwdev, mac_idx, normal);
+ }
+ 
++static inline
++void rtw89_mac_set_vcore_cfg(struct rtw89_dev *rtwdev, u8 vlv)
++{
++	const struct rtw89_mac_gen_def *mac = rtwdev->chip->mac_def;
++
++	if (!mac->set_vcore_cfg)
++		return;
++
++	mac->set_vcore_cfg(rtwdev, vlv);
++}
++
++static inline
++void rtw89_mac_set_vcore_reset(struct rtw89_dev *rtwdev)
++{
++	struct rtw89_hal *hal = &rtwdev->hal;
++
++	if (hal->thermal_prot_vlv == 0)
++		return;
++
++	hal->thermal_prot_vlv = 0;
++	rtw89_mac_set_vcore_cfg(rtwdev, 0);
++}
++
+ static inline
+ void rtw89_mac_set_edcca_mode_bands(struct rtw89_dev *rtwdev, bool normal)
+ {
+diff --git a/drivers/net/wireless/realtek/rtw89/mac_be.c b/drivers/net/wireless/realtek/rtw89/mac_be.c
+index 0fe317929b1b..4bdf20b7ba6d 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac_be.c
++++ b/drivers/net/wireless/realtek/rtw89/mac_be.c
+@@ -2676,6 +2676,43 @@ void rtw89_mac_set_edcca_mode_be(struct rtw89_dev *rtwdev, u8 mac_idx, bool norm
+ 	}
+ }
+ 
++static
++void rtw89_mac_set_vcore_cfg_be(struct rtw89_dev *rtwdev, u8 vlv)
++{
++	struct rtw89_hal *hal = &rtwdev->hal;
++	u32 val32;
++	u8 target;
++	u8 vpwm;
++	int i;
++
++	if (rtwdev->chip->chip_id != RTL8922D)
++		return;
++
++	target = clamp(hal->thermal_prot_vmax - vlv,
++		       hal->thermal_prot_vmin, hal->thermal_prot_vmax);
++
++	val32 = rtw89_read32(rtwdev, R_BE_SPS_DIG_ON_CTRL0);
++	vpwm = u32_get_bits(val32, B_BE_PWMTUNE_MASK);
++	val32 &= ~B_BE_PWMTUNE_MASK;
++
++	if (vpwm == target)
++		return;
++
++	for (i = 0; i < RTW89_THERMAL_PROT_VLV_MAX; i++) {
++		if (vpwm > target)
++			vpwm--;
++		else
++			vpwm++;
++
++		rtw89_write32(rtwdev, R_BE_SPS_DIG_ON_CTRL0, val32 | vpwm);
++
++		if (vpwm == target)
++			break;
++
++		mdelay(50);
++	}
++}
++
+ static
+ int rtw89_mac_cfg_ppdu_status_be(struct rtw89_dev *rtwdev, u8 mac_idx, bool enable)
+ {
+@@ -3287,6 +3324,7 @@ const struct rtw89_mac_gen_def rtw89_mac_gen_be = {
+ 	.cfg_ppdu_status = rtw89_mac_cfg_ppdu_status_be,
+ 	.cfg_phy_rpt = rtw89_mac_cfg_phy_rpt_be,
+ 	.set_edcca_mode = rtw89_mac_set_edcca_mode_be,
++	.set_vcore_cfg = rtw89_mac_set_vcore_cfg_be,
+ 
+ 	.dle_mix_cfg = dle_mix_cfg_be,
+ 	.chk_dle_rdy = chk_dle_rdy_be,
+diff --git a/drivers/net/wireless/realtek/rtw89/phy.c b/drivers/net/wireless/realtek/rtw89/phy.c
+index 981c7f02271a..dcd54be58a33 100644
+--- a/drivers/net/wireless/realtek/rtw89/phy.c
++++ b/drivers/net/wireless/realtek/rtw89/phy.c
+@@ -5718,6 +5718,32 @@ static void rtw89_phy_antdiv_init(struct rtw89_dev *rtwdev)
+ 	rtw89_phy_antdiv_reg_init(rtwdev);
+ }
+ 
++static void rtw89_phy_thermal_protect_vcore(struct rtw89_dev *rtwdev)
++{
++	struct rtw89_phy_stat *phystat = &rtwdev->phystat;
++	struct rtw89_hal *hal = &rtwdev->hal;
++	bool vcore_enabled = !!hal->thermal_prot_vmax;
++	u8 th_max = phystat->last_thermal_max;
++	u8 vlv = hal->thermal_prot_vlv;
++	u8 prot_th;
++
++	if (!vcore_enabled || (hal->disabled_dm_bitmap & BIT(RTW89_DM_VCORE)))
++		return;
++
++	prot_th = hal->thermal_prot_th - RTW89_THERMAL_PROT_VLV_TH_OFFSET;
++	if (th_max > prot_th && vlv < RTW89_THERMAL_PROT_VLV_MAX)
++		vlv++;
++	else if (th_max < prot_th - 2 && vlv > 0)
++		vlv--;
++	else
++		return;
++
++	rtw89_debug(rtwdev, RTW89_DBG_RFK_TRACK, "thermal protection vlv=%d\n", vlv);
++
++	hal->thermal_prot_vlv = vlv;
++	rtw89_mac_set_vcore_cfg(rtwdev, vlv);
++}
++
+ static void rtw89_phy_thermal_protect(struct rtw89_dev *rtwdev)
+ {
+ 	struct rtw89_phy_stat *phystat = &rtwdev->phystat;
+@@ -6186,6 +6212,7 @@ void rtw89_phy_stat_track(struct rtw89_dev *rtwdev)
+ 	struct rtw89_bb_ctx *bb;
+ 
+ 	rtw89_phy_stat_thermal_update(rtwdev);
++	rtw89_phy_thermal_protect_vcore(rtwdev);
+ 	rtw89_phy_thermal_protect(rtwdev);
+ 	rtw89_phy_stat_rssi_update(rtwdev);
+ 	rtw89_phy_stat_update(rtwdev);
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922d.c b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+index a6693c8413d5..36b9b529195d 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922d.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+@@ -3451,7 +3451,7 @@ const struct rtw89_chip_info rtw8922d_chip_info = {
+ 	.wde_qempty_acq_grpnum	= 8,
+ 	.wde_qempty_mgq_grpsel	= 8,
+ 	.rf_base_addr		= {0x3e000, 0x3f000},
+-	.thermal_th		= {0xac, 0xad},
++	.thermal_th		= {0xac, 0xb4},
+ 	.pwr_on_seq		= NULL,
+ 	.pwr_off_seq		= NULL,
+ 	.bb_table		= NULL,
+-- 
+2.55.0
+

@@ -1,0 +1,72 @@
+From 50e92ed533c4dddf2b5c20db061a10d89e453ea4 Mon Sep 17 00:00:00 2001
+From: Robert Beckett <bob.beckett@collabora.com>
+Date: Thu, 7 May 2026 17:51:17 +0100
+Subject: [PATCH] [NOT-FOR-UPSTREAM] drm/amd/display: use VTEM packet type for
+ VRR over PCON
+
+If we are connected to a display that can do HDMI VRR but not FreeSync
+over PCON, we must use VTEM packet type.
+
+Signed-off-by: Pei-Hsin Yang <peihsiny@valvesoftware.com>
+Signed-off-by: Robert Beckett <bob.beckett@collabora.com>
+(cherry picked from commit 3ff66bf85ea4de9804e486c365e2438eb8c16486)
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c | 33 ++++++++++++++-----
+ 1 file changed, 24 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+index c5e6270e5ccb..e5fa8d0d5233 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -10029,23 +10029,38 @@ static void update_freesync_state_on_stream(
+ 	aconn = (struct amdgpu_dm_connector *)new_stream->dm_stream_context;
+ 
+ 	if (aconn && aconn->as_type == ADAPTIVE_SYNC_TYPE_HDMI)
++	{
+ 		packet_type = PACKET_TYPE_VTEM;
+-
+-	else if (aconn && (aconn->as_type == ADAPTIVE_SYNC_TYPE_PCON_ALLOWED ||
+-		      aconn->vsdb_info.replay_mode)) {
++	}
++	else if (aconn && (aconn->as_type == ADAPTIVE_SYNC_TYPE_PCON_ALLOWED || aconn->vsdb_info.replay_mode))
++	{
++		struct drm_connector *connector = &aconn->base;
+ 		pack_sdp_v1_3 = aconn->pack_sdp_v1_3;
+ 
+-		if (aconn->vsdb_info.amd_vsdb_version == 1)
+-			packet_type = PACKET_TYPE_FS_V1;
+-		else if (aconn->vsdb_info.amd_vsdb_version == 2)
+-			packet_type = PACKET_TYPE_FS_V2;
+-		else if (aconn->vsdb_info.amd_vsdb_version == 3)
+-			packet_type = PACKET_TYPE_FS_V3;
++		DRM_DEBUG_KMS("PCON Type, VRR supported: = %d", connector->display_info.hdmi.vrr_cap.supported);
++
++		/* if not HDMI VRR capable, use FreeSync SPD packet */
++		if (!connector->display_info.hdmi.vrr_cap.supported)
++		{
++			if (aconn->vsdb_info.amd_vsdb_version == 1)
++				packet_type = PACKET_TYPE_FS_V1;
++			else if (aconn->vsdb_info.amd_vsdb_version == 2)
++				packet_type = PACKET_TYPE_FS_V2;
++			else if (aconn->vsdb_info.amd_vsdb_version == 3)
++				packet_type = PACKET_TYPE_FS_V3;
++		}
++		else
++		{
++			/* HDMI VRR but not FreeSync capable, use VTEM packet */
++			packet_type = PACKET_TYPE_VTEM;
++		}
+ 
+ 		mod_build_adaptive_sync_infopacket(new_stream, aconn->as_type, NULL,
+ 					&new_stream->adaptive_sync_infopacket);
+ 	}
+ 
++	DRM_DEBUG_KMS("as_type = %d, packet_type = %d", aconn->as_type, packet_type);
++
+ 	mod_freesync_build_vrr_infopacket(
+ 		dm->freesync_module,
+ 		new_stream,
+-- 
+2.55.0
+

@@ -1,0 +1,59 @@
+From d39e4d1355fadb8be256099e0661c9f0f2af873e Mon Sep 17 00:00:00 2001
+From: Vicki Pfau <vi@endrift.com>
+Date: Mon, 9 Mar 2026 20:47:32 -0700
+Subject: [PATCH] [FOR-UPSTREAM] Input: xpad - Remove Xbox One support
+
+It has been superseded by xbox_gip. As the new driver is already at feature
+parity, removing the fairly rough Xbox One support from xpad is safe and
+will prevent any potential conflicts.
+
+Signed-off-by: Vicki Pfau <vi@endrift.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ Documentation/input/devices/xpad.rst | 17 +++++++----------
+ 1 file changed, 7 insertions(+), 10 deletions(-)
+
+diff --git a/Documentation/input/devices/xpad.rst b/Documentation/input/devices/xpad.rst
+index a480bc781565..fd2afdd7b405 100644
+--- a/Documentation/input/devices/xpad.rst
++++ b/Documentation/input/devices/xpad.rst
+@@ -2,19 +2,19 @@
+ xpad - Linux USB driver for Xbox compatible controllers
+ =======================================================
+ 
+-This driver exposes all first-party and third-party Xbox compatible
+-controllers. It has a long history and has enjoyed considerable usage
+-as Windows' xinput library caused most PC games to focus on Xbox
+-controller compatibility.
++This driver exposes all first-party and third-party Xbox and Xbox 360
++compatible controllers. It has a long history and has enjoyed considerable
++usage as Windows' xinput library caused most PC games to focus on Xbox
++controller compatibility. Xbox One/Series controller support has been
++superseded by the xbox_gip driver, which specializes in the Gaming Input
++Protocl that is introduced on the Xbox One.
+ 
+ Due to backwards compatibility all buttons are reported as digital.
+ This only affects Original Xbox controllers. All later controller models
+ have only digital face buttons.
+ 
+ Rumble is supported on some models of Xbox 360 controllers but not of
+-Original Xbox controllers nor on Xbox One controllers. As of writing
+-the Xbox One's rumble protocol has not been reverse-engineered but in
+-the future could be supported.
++Original Xbox controllers.
+ 
+ 
+ Notes
+@@ -98,9 +98,6 @@ All generations of Xbox controllers speak USB over the wire.
+ - Wireless Xbox 360 controllers require a 'Xbox 360 Wireless Gaming Receiver
+   for Windows'
+ - Wired Xbox 360 controllers use standard USB connectors.
+-- Xbox One controllers can be wireless but speak Wi-Fi Direct and are not
+-  yet supported.
+-- Xbox One controllers can be wired and use standard Micro-USB connectors.
+ 
+ 
+ 
+-- 
+2.55.0
+

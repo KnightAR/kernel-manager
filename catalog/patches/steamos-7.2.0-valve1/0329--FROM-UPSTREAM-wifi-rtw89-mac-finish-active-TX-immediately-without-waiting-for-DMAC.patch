@@ -1,0 +1,80 @@
+From 1f5f271fa51903fc85e8af9d31f206477bd7b497 Mon Sep 17 00:00:00 2001
+From: Ping-Ke Shih <pkshih@realtek.com>
+Date: Thu, 25 Jun 2026 14:15:36 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: mac: finish active TX
+ immediately without waiting for DMAC
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Currently active TX only finishes after ensuring PCIE and DMAC become idle.
+However, the waiting time might be long. Since the packet is already
+transmitted over the air, update the registers to finish active TX
+immediately, regardless of the PCIE/DMAC status.
+
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260625061545.44808-2-pkshih@realtek.com
+(cherry picked from commit 0819de0fd2906236dd38fdd89e52dcb53cd853b2)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/mac_be.c |  3 +++
+ drivers/net/wireless/realtek/rtw89/reg.h    | 28 +++++++++++++++++++++
+ 2 files changed, 31 insertions(+)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/mac_be.c b/drivers/net/wireless/realtek/rtw89/mac_be.c
+index f24c119b99f1..70e6c9d21986 100644
+--- a/drivers/net/wireless/realtek/rtw89/mac_be.c
++++ b/drivers/net/wireless/realtek/rtw89/mac_be.c
+@@ -1196,6 +1196,9 @@ static int scheduler_init_be(struct rtw89_dev *rtwdev, u8 mac_idx)
+ 
+ 	rtw89_io_pack(rtwdev);
+ 
++	reg = rtw89_mac_reg_by_idx(rtwdev, R_BE_MISC_1, mac_idx);
++	rtw89_write32_set(rtwdev, reg, B_BE_EN_TX_FINISH_PRD_RESP);
++
+ 	if (chip->chip_id == RTL8922D) {
+ 		reg = rtw89_mac_reg_by_idx(rtwdev, R_BE_SCH_EXT_CTRL, mac_idx);
+ 		rtw89_write32_set(rtwdev, reg, B_BE_CWCNT_PLUS_MODE);
+diff --git a/drivers/net/wireless/realtek/rtw89/reg.h b/drivers/net/wireless/realtek/rtw89/reg.h
+index 086ef77ebb9f..bf1c6cb0ae9c 100644
+--- a/drivers/net/wireless/realtek/rtw89/reg.h
++++ b/drivers/net/wireless/realtek/rtw89/reg.h
+@@ -6858,6 +6858,34 @@
+ #define B_BE_MUEDCA_EN_MASK GENMASK(1, 0)
+ #define B_BE_MUEDCA_EN_0 BIT(0)
+ 
++#define R_BE_MISC_1 0x1037C
++#define R_BE_MISC_1_C1 0x1437C
++#define B_BE_PPS_REMAIN_TIME_MODE BIT(31)
++#define B_BE_PPS_IDLE_SORT_EN BIT(30)
++#define B_BE_SR_TXOP_USE_SR_PERIOD_EN BIT(29)
++#define B_BE_SCH_CCA_PIFS_CLK_GATING_DIS BIT(28)
++#define B_BE_SR_TXOP_EN BIT(27)
++#define B_BE_SCH_ABORT_CNT_SIFS_EN BIT(26)
++#define B_BE_SCH_ABORT_CNT_TB_EN BIT(25)
++#define B_BE_SCH_ABORT_CNT_CTN_EN BIT(24)
++#define B_BE_SR_CCA_PER20_BITMAP_EN BIT(23)
++#define B_BE_SR_CCA_S80_EN BIT(22)
++#define B_BE_SR_CCA_S40_EN BIT(21)
++#define B_BE_SR_CCA_S20_EN BIT(20)
++#define B_BE_EN_TX_FINISH_PRD_RESP BIT(18)
++#define B_BE_RESP_TX_ABORT_NON_IDLE BIT(17)
++#define B_BE_RESP_TX_ABORT_QUICK_EN BIT(16)
++#define B_BE_PREBKF_CHK_LINK_BUSY BIT(15)
++#define B_BE_SCH_MSD_PRD_RST_EDCA_EN BIT(14)
++#define B_BE_LINK_BUSY_RST_EDCA_EN_MASK GENMASK(13, 12)
++#define B_BE_RX_TSFT_SYNC_BYPASS_FCS BIT(11)
++#define B_BE_RX_TSFT_DIFF_THD_MASK GENMASK(10, 8)
++#define B_BE_CAL_TBTT_OV_EN BIT(5)
++#define B_BE_SUBBCN_MS_CNT_MODE BIT(3)
++#define B_BE_CAL_ALWAYS_EN BIT(2)
++#define B_BE_SIFS_TIMER_AUTO_RST_EN BIT(1)
++#define B_BE_CHK_HAS_SIFS_TX_ABORT BIT(0)
++
+ #define R_BE_CTN_DRV_TXEN 0x10398
+ #define R_BE_CTN_DRV_TXEN_C1 0x14398
+ #define B_BE_CTN_TXEN_TWT_3 BIT(17)
+-- 
+2.55.0
+

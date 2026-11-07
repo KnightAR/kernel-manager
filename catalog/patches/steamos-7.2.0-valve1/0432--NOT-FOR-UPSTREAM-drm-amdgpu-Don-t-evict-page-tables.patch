@@ -1,0 +1,42 @@
+From aa1c87f1341a0cc8539e5d533bdf3b596e2ea7cb Mon Sep 17 00:00:00 2001
+From: Natalie Vock <natalie.vock@gmx.de>
+Date: Mon, 15 Jun 2026 23:00:39 +0200
+Subject: [PATCH] [NOT-FOR-UPSTREAM] drm/amdgpu: Don't evict page tables
+
+Way too broken. Submissions can be randomly rejected if we even try
+evicting them. Don't try.
+
+Signed-off-by: Natalie Vock <natalie.vock@gmx.de>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
+index eaa86e32912e..715208684faa 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_ttm.c
+@@ -1496,10 +1496,18 @@ static bool amdgpu_ttm_bo_eviction_valuable(struct ttm_buffer_object *bo,
+ 	if (bo->resource->mem_type == TTM_PL_SYSTEM)
+ 		return true;
+ 
+-	if (bo->type == ttm_bo_type_kernel &&
+-	    !amdgpu_vm_evictable(ttm_to_amdgpu_bo(bo)))
++	/*
++	 * XXX: Trying to evict page-table BOs is super scuffed and can lead
++	 * to spurious lost devices. This really needs to be reworked!
++	 * For the time being, just don't try.
++	 */
++	if (bo->type == ttm_bo_type_kernel)
+ 		return false;
+ 
++	/*if (bo->type == ttm_bo_type_kernel &&
++	    !amdgpu_vm_evictable(ttm_to_amdgpu_bo(bo)))
++		return false;*/
++
+ 	/* If bo is a KFD BO, check if the bo belongs to the current process.
+ 	 * If true, then return false as any KFD process needs all its BOs to
+ 	 * be resident to run successfully
+-- 
+2.55.0
+

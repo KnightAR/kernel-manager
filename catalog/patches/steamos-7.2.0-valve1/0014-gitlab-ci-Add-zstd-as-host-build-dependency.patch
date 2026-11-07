@@ -1,0 +1,37 @@
+From b89132ce04d06f0e2dc92824a95bba35e2882a08 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Wed, 26 Oct 2022 18:29:15 +0300
+Subject: [PATCH] gitlab-ci: Add zstd as host build dependency
+
+This is required to handle the following error:
+
+  ZSTD22  arch/x86/boot/compressed/vmlinux.bin.zst
+/bin/sh: 1: zstd: not found
+make[2]: *** [arch/x86/boot/compressed/Makefile:145: arch/x86/boot/compressed/vmlinux.bin.zst] Error 127
+make[2]: *** Deleting file 'arch/x86/boot/compressed/vmlinux.bin.zst'
+make[2]: *** Waiting for unfinished jobs....
+make[1]: *** [arch/x86/boot/Makefile:115: arch/x86/boot/compressed/vmlinux] Error 2
+make: *** [arch/x86/Makefile:271: bzImage] Error 2
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index eaee607b7c2d..de363ef930ae 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -19,7 +19,7 @@ kernel build:
+     - autoscaled
+   before_script:
+     - apt-get update -y
+-    - apt-get install -y rsync git build-essential bc kmod cpio flex libncurses5-dev bison libssl-dev libelf-dev openssh-client curl qemu-system* unzip python3
++    - apt-get install -y rsync git build-essential bc kmod cpio flex libncurses5-dev bison libssl-dev libelf-dev openssh-client curl qemu-system* unzip python3 zstd
+   script:
+     - make x86_64_defconfig && make kvm_guest.config
+     - ./scripts/kconfig/merge_config.sh .config .config-fragment
+-- 
+2.55.0
+

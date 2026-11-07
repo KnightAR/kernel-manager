@@ -1,0 +1,10 @@
+StorePath: /nix/store/bj3961gkikxlkc8smfi0qlg8wb3b4gj4-linux-6.18.49-dev
+URL: nar/0xjcg8dvhzr6nplkkz8xxqyln9vwhaaz6g8nyanx0xr6lly5wy32.nar.zst
+Compression: zstd
+FileHash: sha256:0kfvxcckvrs5m42yfhacq9r40wyv6cssd6in3w7kws2sc2j0n82w
+FileSize: 222984821
+NarHash: sha256:0xjcg8dvhzr6nplkkz8xxqyln9vwhaaz6g8nyanx0xr6lly5wy32
+NarSize: 619312640
+References: 0a4i5pcnhb4b9wnzx1x1lga18nk3rna7-zlib-1.3.2-dev 25771zf6h2dryp8d3i65gyg17mmphy9v-binutils-wrapper-2.46 2limljgc50jy76vg388ldgggcjhhkhav-gcc-15.2.0 2rgc5gn3a2qids4bhjaq2g1l1r2i1637-glibc-2.42-67-dev 4838cpsffgmc4xw856y0zdpvgssjljm0-rustc-1.95.0 7fpa17hpgqqs084lk08j0mwmc5xpbyf4-binutils-2.46 9wyldz5qids294k9h5qcg1f72i52jidi-gnumake-4.4.1 bj3961gkikxlkc8smfi0qlg8wb3b4gj4-linux-6.18.49-dev c7c0yarb87cv4jxlyr02dxryrlmyi232-gcc-wrapper-15.2.0 cvv2iqql2vijlyxvfrijhzq7bvzvbwdl-elfutils-0.194 gph17gb73p6qbrqqjnypfjj5npf0ldyx-coreutils-9.11 jksq0zyk08l29w4alp0g3ycgx6pwwjdk-perl-5.42.0 l68i51npb6nlxi6z18gvgb45dz3xr5yp-zlib-1.3.2 m07h00fl6538s4gavrp66a20ka4hg7fy-glibc-2.42-67 m7wg7cj2vw3n6a0pcl3fzbqfm0qsawmd-gawk-5.4.1 pfhglic7cvs9nwlq3z1kqhlzxh51w0jm-rust-lib-src q0l4jdiipfm38m9xd5gra3yv3b6mzm03-linux-6.18.49 rzl7zd3zx56vl7m55x1l49sr4xx2bb7y-bash-5.3p9 svl89366pvzz5s3myh1fjniz9l0x17fh-gnused-4.10 xlinf0nnl6k0fhhlxn7j3zpcdc518jv3-elfutils-0.194-dev yk1qqipjasb5mgjpq1vikmjf7aibbszn-python3-minimal-3.13.15 z0n70pxyzi87why1bcq81zgd7b924nfj-gcc-15.2.0-lib
+Deriver: y55a9imaixb6mklc2iwhm00m2c6zpw4b-linux-6.18.49.drv
+Sig: cache.nixos.org-1:XWt1Sdy6n29AaMtWyalnyRlZGXt3lGftgikTkWFLRLeqgutfPUwZdlpAnFc3ahqrTgXMUE9YaSAz3b2z0ZGcCw==

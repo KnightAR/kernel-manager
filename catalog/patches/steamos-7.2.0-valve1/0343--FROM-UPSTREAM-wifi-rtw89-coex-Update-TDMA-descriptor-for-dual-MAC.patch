@@ -1,0 +1,86 @@
+From f9b23851d2c585cd24c8a2b22a61c4a2d660faca Mon Sep 17 00:00:00 2001
+From: Ching-Te Ku <ku920601@realtek.com>
+Date: Mon, 6 Jul 2026 10:54:39 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: coex: Update TDMA descriptor for
+ dual MAC
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The mechanism needs information to know which MAC is coexisting with which
+Bluetooth and when to enable TDMA with which MAC. So change an variable to
+describe the binding target.
+
+Signed-off-by: Ching-Te Ku <ku920601@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260706025445.18428-4-pkshih@realtek.com
+(cherry picked from commit 2c5af470819ba6c8a996c297d2beb06987215f8f)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/coex.c | 15 ++++++++-------
+ drivers/net/wireless/realtek/rtw89/core.h |  4 ++--
+ 2 files changed, 10 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/coex.c b/drivers/net/wireless/realtek/rtw89/coex.c
+index 196bec751070..14cc62cf399d 100644
+--- a/drivers/net/wireless/realtek/rtw89/coex.c
++++ b/drivers/net/wireless/realtek/rtw89/coex.c
+@@ -2288,9 +2288,9 @@ static void _append_tdma(struct rtw89_dev *rtwdev)
+ 	}
+ 
+ 	rtw89_debug(rtwdev, RTW89_DBG_BTC,
+-		    "[BTC], %s(): type:%d, rxflctrl=%d, txpause=%d, wtgle_n=%d, leak_n=%d, ext_ctrl=%d\n",
++		    "[BTC], %s(): type:%d, rxflctrl=%d, txflctrl=%d, bind=%d, leak_n=%d, ext_ctrl=%d\n",
+ 		    __func__, dm->tdma.type, dm->tdma.rxflctrl,
+-		    dm->tdma.txpause, dm->tdma.wtgle_n, dm->tdma.leak_n,
++		    dm->tdma.txflctrl, dm->tdma.bind, dm->tdma.leak_n,
+ 		    dm->tdma.ext_ctrl);
+ }
+ 
+@@ -3733,7 +3733,8 @@ static bool _check_freerun(struct rtw89_dev *rtwdev)
+ 
+ #define _tdma_set_flctrl(btc, flc) ({(btc)->dm.tdma.rxflctrl = flc; })
+ #define _tdma_set_flctrl_role(btc, role) ({(btc)->dm.tdma.rxflctrl_role = role; })
+-#define _tdma_set_tog(btc, wtg) ({(btc)->dm.tdma.wtgle_n = wtg; })
++#define _tdma_set_rxflctrl(btc, rxflc) ({(btc)->dm.tdma.rxflctrl = rxflc; })
++#define _tdma_set_txflctrl(btc, txflc) ({(btc)->dm.tdma.txflctrl = txflc; })
+ #define _tdma_set_lek(btc, lek) ({(btc)->dm.tdma.leak_n = lek; })
+ 
+ struct btc_btinfo_lb2 {
+@@ -9967,13 +9968,13 @@ static int _show_fbtc_tdma(struct rtw89_dev *rtwdev, char *buf, size_t bufsz)
+ 	p += scnprintf(p, end - p,
+ 		       " %-15s : ", "[tdma_policy]");
+ 	p += scnprintf(p, end - p,
+-		       "type:%d, rx_flow_ctrl:%d, tx_pause:%d, ",
++		       "type:%d, rx_flow_ctrl:%d, txflctrl:%d, ",
+ 		       (u32)t->type,
+-		       t->rxflctrl, t->txpause);
++		       t->rxflctrl, t->txflctrl);
+ 
+ 	p += scnprintf(p, end - p,
+-		       "wl_toggle_n:%d, leak_n:%d, ext_ctrl:%d, ",
+-		       t->wtgle_n, t->leak_n, t->ext_ctrl);
++		       "bind:%d, leak_n:%d, ext_ctrl:%d, ",
++		       t->bind, t->leak_n, t->ext_ctrl);
+ 
+ 	p += scnprintf(p, end - p,
+ 		       "policy_type:%d",
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index 78563204998c..3ab3754488c8 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -2354,8 +2354,8 @@ struct rtw89_btc_cx {
+ struct rtw89_btc_fbtc_tdma {
+ 	u8 type; /* btc_ver::fcxtdma */
+ 	u8 rxflctrl;
+-	u8 txpause;
+-	u8 wtgle_n;
++	u8 txflctrl;
++	u8 bind;
+ 	u8 leak_n;
+ 	u8 ext_ctrl;
+ 	u8 rxflctrl_role;
+-- 
+2.55.0
+

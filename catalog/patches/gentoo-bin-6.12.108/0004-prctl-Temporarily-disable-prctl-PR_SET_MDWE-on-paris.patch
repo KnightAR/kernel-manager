@@ -1,0 +1,49 @@
+From e623976beb3150dc14589dd0b52be6d1badd7d29 Mon Sep 17 00:00:00 2001
+From: Helge Deller <deller@gmx.de>
+Date: Mon, 13 Nov 2023 16:06:18 +0100
+Subject: [PATCH 04/17] prctl: Temporarily disable prctl(PR_SET_MDWE) on parisc
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+systemd-254 tries to use prctl(PR_SET_MDWE) for systemd's
+MemoryDenyWriteExecute functionality, but fails on PA-RISC/HPPA which
+still needs executable stacks.
+
+Temporarily disable prctl(PR_SET_MDWE) by returning -ENODEV on parisc
+for now. Note that we can't return -EINVAL since systemd will then try
+to use seccomp instead.
+
+Reported-by: Sam James <sam@gentoo.org>
+Signed-off-by: Helge Deller <deller@gmx.de>
+Link: https://lore.kernel.org/all/875y2jro9a.fsf@gentoo.org/
+Link: https://github.com/systemd/systemd/issues/29775.
+Cc: <stable@vger.kernel.org> # v6.3+
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ kernel/sys.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/sys.c b/kernel/sys.c
+index 8283e35c9eeb..2b02198e1117 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -2745,10 +2745,16 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
+ 		break;
+ #endif
+ 	case PR_SET_MDWE:
+-		error = prctl_set_mdwe(arg2, arg3, arg4, arg5);
++		if (IS_ENABLED(CONFIG_PARISC))
++			error = -EINVAL;
++		else
++			error = prctl_set_mdwe(arg2, arg3, arg4, arg5);
+ 		break;
+ 	case PR_GET_MDWE:
+-		error = prctl_get_mdwe(arg2, arg3, arg4, arg5);
++		if (IS_ENABLED(CONFIG_PARISC))
++			error = -EINVAL;
++		else
++			error = prctl_get_mdwe(arg2, arg3, arg4, arg5);
+ 		break;
+ 	case PR_PPC_GET_DEXCR:
+ 		if (arg3 || arg4 || arg5)

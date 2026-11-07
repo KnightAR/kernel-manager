@@ -1,0 +1,40 @@
+From 1c60863db7c6a4fc4de8dba37e5d24227e7ba588 Mon Sep 17 00:00:00 2001
+From: Chih-Kang Chang <gary.chang@realtek.com>
+Date: Tue, 7 Jul 2026 17:10:53 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: 8852a: fix RSSI report when
+ average beacon RSSI is not ready
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+8852A uses the average beacon RSSI to smooth the RSSI. However, before
+the average beacon RSSI is available, the RSSI should use the PPDU
+status RSSI of the received packet to avoid reporting the RSSI as -110 dBm.
+
+Fixes: f0f3bf4b370c ("wifi: rtw89: 8852a: report average RSSI to avoid unnecessary scanning")
+Signed-off-by: Chih-Kang Chang <gary.chang@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260707091056.42771-13-pkshih@realtek.com
+(cherry picked from commit 9bf6bd6ed5accb57544d04ded911a2ef1642d48f)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/rtw8852a.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852a.c b/drivers/net/wireless/realtek/rtw89/rtw8852a.c
+index 6aa726efb7f6..78e07276fb2e 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852a.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852a.c
+@@ -2211,7 +2211,7 @@ static void rtw8852a_query_ppdu(struct rtw89_dev *rtwdev,
+ 	u8 raw;
+ 
+ 	if (!status->signal) {
+-		if (phy_ppdu->to_self)
++		if (phy_ppdu->to_self && ewma_rssi_read(&bb->bcn_rssi))
+ 			raw = ewma_rssi_read(&bb->bcn_rssi);
+ 		else
+ 			raw = max(rx_power[RF_PATH_A], rx_power[RF_PATH_B]);
+-- 
+2.55.0
+

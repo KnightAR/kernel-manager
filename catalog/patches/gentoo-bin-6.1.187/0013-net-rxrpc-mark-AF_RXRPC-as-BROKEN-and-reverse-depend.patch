@@ -1,0 +1,69 @@
+From dc0ae35f82a90cac62b930d47f90ddd64ee0c350 Mon Sep 17 00:00:00 2001
+From: Sam James <sam@gentoo.org>
+Date: Fri, 8 May 2026 12:25:17 +0100
+Subject: [PATCH 13/16] net/rxrpc: mark AF_RXRPC as BROKEN (and reverse
+ dependencies)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+There are way, way too many rxrpc fixes that are missing from <=6.6 and
+it's too dangerous to try backport those in a hurry.
+
+Disable the module instead.
+
+Bug: https://bugs.gentoo.org/974307
+Signed-off-by: Michał Górny <mgorny@gentoo.org>
+---
+ fs/afs/Kconfig    | 4 ++++
+ net/rxrpc/Kconfig | 1 +
+ 2 files changed, 5 insertions(+)
+
+diff --git a/fs/afs/Kconfig b/fs/afs/Kconfig
+index fc8ba9142f2f..b8ec2e8edf4b 100644
+--- a/fs/afs/Kconfig
++++ b/fs/afs/Kconfig
+@@ -2,6 +2,7 @@
+ config AFS_FS
+ 	tristate "Andrew File System support (AFS)"
+ 	depends on INET
++	depends on BROKEN
+ 	select AF_RXRPC
+ 	select DNS_RESOLVER
+ 	select NETFS_SUPPORT
+@@ -16,6 +17,7 @@ config AFS_FS
+ config AFS_DEBUG
+ 	bool "AFS dynamic debugging"
+ 	depends on AFS_FS
++	depends on BROKEN
+ 	help
+ 	  Say Y here to make runtime controllable debugging messages appear.
+ 
+@@ -26,6 +28,7 @@ config AFS_DEBUG
+ config AFS_FSCACHE
+ 	bool "Provide AFS client caching support"
+ 	depends on AFS_FS=m && FSCACHE || AFS_FS=y && FSCACHE=y
++	depends on BROKEN
+ 	help
+ 	  Say Y here if you want AFS data to be cached locally on disk through
+ 	  the generic filesystem cache manager
+@@ -33,6 +36,7 @@ config AFS_FSCACHE
+ config AFS_DEBUG_CURSOR
+ 	bool "AFS server cursor debugging"
+ 	depends on AFS_FS
++	depends on BROKEN
+ 	help
+ 	  Say Y here to cause the contents of a server cursor to be dumped to
+ 	  the dmesg log if the server rotation algorithm fails to successfully
+diff --git a/net/rxrpc/Kconfig b/net/rxrpc/Kconfig
+index accd35c05577..67fb2d332176 100644
+--- a/net/rxrpc/Kconfig
++++ b/net/rxrpc/Kconfig
+@@ -6,6 +6,7 @@
+ config AF_RXRPC
+ 	tristate "RxRPC session sockets"
+ 	depends on INET
++	depends on BROKEN
+ 	select CRYPTO
+ 	select KEYS
+ 	select NET_UDP_TUNNEL

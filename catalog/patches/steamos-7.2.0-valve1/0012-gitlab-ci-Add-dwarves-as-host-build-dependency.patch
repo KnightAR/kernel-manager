@@ -1,0 +1,39 @@
+From cabb725475fc2a03c849db11dcd9d46ed60a20b4 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Wed, 26 Oct 2022 17:25:32 +0300
+Subject: [PATCH] gitlab-ci: Add dwarves as host build dependency
+
+This is required to handle the following error:
+
+  LD      vmlinux.o
+  MODPOST vmlinux.symvers
+  MODINFO modules.builtin.modinfo
+  GEN     modules.builtin
+  CC      .vmlinux.export.o
+BTF: .tmp_vmlinux.btf: pahole (pahole) is not available
+Failed to generate BTF for vmlinux
+Try to disable CONFIG_DEBUG_INFO_BTF
+make: *** [Makefile:1169: vmlinux] Error 1
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ .gitlab-ci.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+index eaee607b7c2d..3e0ec597544b 100644
+--- a/.gitlab-ci.yml
++++ b/.gitlab-ci.yml
+@@ -19,7 +19,7 @@ kernel build:
+     - autoscaled
+   before_script:
+     - apt-get update -y
+-    - apt-get install -y rsync git build-essential bc kmod cpio flex libncurses5-dev bison libssl-dev libelf-dev openssh-client curl qemu-system* unzip python3
++    - apt-get install -y rsync git build-essential bc kmod cpio flex libncurses5-dev bison libssl-dev libelf-dev openssh-client curl qemu-system* unzip python3 dwarves
+   script:
+     - make x86_64_defconfig && make kvm_guest.config
+     - ./scripts/kconfig/merge_config.sh .config .config-fragment
+-- 
+2.55.0
+

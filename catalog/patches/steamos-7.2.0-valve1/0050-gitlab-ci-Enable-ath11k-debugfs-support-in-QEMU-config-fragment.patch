@@ -1,0 +1,27 @@
+From fe429a636375f242a86f4be3aab189e1e5ed57e5 Mon Sep 17 00:00:00 2001
+From: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Date: Fri, 24 May 2024 17:05:15 +0300
+Subject: [PATCH] gitlab-ci: Enable ath11k debugfs support in QEMU config
+ fragment
+
+Signed-off-by: Cristian Ciocaltea <cristian.ciocaltea@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ ci/kernel-config/qemu/config-fragment | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ci/kernel-config/qemu/config-fragment b/ci/kernel-config/qemu/config-fragment
+index 48308f6d2931..97526220b299 100644
+--- a/ci/kernel-config/qemu/config-fragment
++++ b/ci/kernel-config/qemu/config-fragment
+@@ -29,6 +29,7 @@ CONFIG_SND_SOC_SOF_AMD_VANGOGH=y
+ CONFIG_LTRF216A=y
+ 
+ CONFIG_ATH11K=y
++CONFIG_ATH11K_DEBUGFS=y
+ CONFIG_ATH11K_PCI=y
+ CONFIG_CRYPTO_MICHAEL_MIC=y
+ CONFIG_CFG80211_CERTIFICATION_ONUS=y
+-- 
+2.55.0
+

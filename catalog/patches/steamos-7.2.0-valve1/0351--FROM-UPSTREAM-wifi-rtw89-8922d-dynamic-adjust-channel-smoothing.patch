@@ -1,0 +1,361 @@
+From 2033c9c2a4bae6f78c8c65bf53399a09d50069e6 Mon Sep 17 00:00:00 2001
+From: Eric Huang <echuang@realtek.com>
+Date: Tue, 7 Jul 2026 17:10:43 +0800
+Subject: [PATCH] [FROM-UPSTREAM] wifi: rtw89: 8922d: dynamic adjust channel
+ smoothing
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add support for path difference based channel smoothing for RTL8922D chip.
+This feature measures the ratio of NDP frames and uses a moving average
+filter to decide whether to enable beamforming channel smoothing. Tone
+index selection is dynamically adjusted based on bandwidth and link mode
+(HE/EHT vs VHT). The feature is only enabled for RTL8922D_CID7090 variant.
+
+Signed-off-by: Eric Huang <echuang@realtek.com>
+Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+Link: https://patch.msgid.link/20260707091056.42771-3-pkshih@realtek.com
+(cherry picked from commit daa3fda5aeb9a8dc8a3f961dcbca8c740f59be07)
+Signed-off-by: Nícolas F. R. A. Prado <nfraprado@collabora.com>
+Signed-off-by: Henry Paradiz <henry.paradiz@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw89/core.c     |  8 +++
+ drivers/net/wireless/realtek/rtw89/core.h     | 21 ++++++
+ drivers/net/wireless/realtek/rtw89/phy.c      |  5 ++
+ drivers/net/wireless/realtek/rtw89/reg.h      | 24 +++++++
+ drivers/net/wireless/realtek/rtw89/rtw8851b.c |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8852a.c |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8852b.c |  1 +
+ .../net/wireless/realtek/rtw89/rtw8852bt.c    |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8852c.c |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8922a.c |  1 +
+ drivers/net/wireless/realtek/rtw89/rtw8922d.c | 68 +++++++++++++++++++
+ 11 files changed, 132 insertions(+)
+
+diff --git a/drivers/net/wireless/realtek/rtw89/core.c b/drivers/net/wireless/realtek/rtw89/core.c
+index b3376fadf593..5d35f13a1ea6 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.c
++++ b/drivers/net/wireless/realtek/rtw89/core.c
+@@ -5806,6 +5806,7 @@ int rtw89_core_sta_link_assoc(struct rtw89_dev *rtwdev,
+ 									 rtwsta_link);
+ 	const struct rtw89_chan *chan = rtw89_chan_get(rtwdev,
+ 						       rtwvif_link->chanctx_idx);
++	struct rtw89_bb_ctx *bb = rtw89_get_bb_ctx(rtwdev, rtwvif_link->phy_idx);
+ 	struct ieee80211_link_sta *link_sta;
+ 	int ret;
+ 
+@@ -5858,6 +5859,7 @@ int rtw89_core_sta_link_assoc(struct rtw89_dev *rtwdev,
+ 
+ 	if (vif->type == NL80211_IFTYPE_STATION && !sta->tdls) {
+ 		struct ieee80211_bss_conf *bss_conf;
++		u8 link_mode = 0;
+ 
+ 		rcu_read_lock();
+ 
+@@ -5865,6 +5867,12 @@ int rtw89_core_sta_link_assoc(struct rtw89_dev *rtwdev,
+ 		link_sta = rtw89_sta_rcu_dereference_link(rtwsta_link, true);
+ 		rtwsta_link->er_cap = rtw89_sta_link_can_er(rtwdev, bss_conf, link_sta);
+ 
++		if (link_sta->he_cap.has_he || link_sta->eht_cap.has_eht)
++			link_mode = 2;
++		else if (link_sta->vht_cap.vht_supported)
++			link_mode = 1;
++		bb->path_diff.link_mode = link_mode;
++
+ 		rcu_read_unlock();
+ 
+ 		rtw89_btc_ntfy_role_info(rtwdev, rtwvif_link, rtwsta_link,
+diff --git a/drivers/net/wireless/realtek/rtw89/core.h b/drivers/net/wireless/realtek/rtw89/core.h
+index 8b032c6fd4dc..45aa7f4976c3 100644
+--- a/drivers/net/wireless/realtek/rtw89/core.h
++++ b/drivers/net/wireless/realtek/rtw89/core.h
+@@ -14,6 +14,7 @@
+ #include <net/mac80211.h>
+ 
+ struct rtw89_dev;
++struct rtw89_bb_ctx;
+ struct rtw89_pci_info;
+ struct rtw89_usb_info;
+ struct rtw89_mac_gen_def;
+@@ -4127,6 +4128,8 @@ struct rtw89_chip_ops {
+ 				    enum rtw89_rf_path path,
+ 				    enum rtw89_phy_idx phy_idx,
+ 				    struct rtw89_phy_calc_efuse_gain *calc);
++	void (*path_diff_update)(struct rtw89_dev *rtwdev,
++				 struct rtw89_bb_ctx *bb);
+ 	int (*pwr_on_func)(struct rtw89_dev *rtwdev);
+ 	int (*pwr_off_func)(struct rtw89_dev *rtwdev);
+ 	void (*query_rxdesc)(struct rtw89_dev *rtwdev,
+@@ -5683,6 +5686,14 @@ struct rtw89_beacon_stat {
+ };
+ 
+ DECLARE_EWMA(thermal, 4, 4);
++DECLARE_EWMA(path_diff, 4, 2);
++
++struct rtw89_phy_path_diff {
++	struct ewma_path_diff avg;
++	u8 raw;
++	bool bf_smo_en;
++	u8 link_mode;
++};
+ 
+ #define RTW89_TX_RATE_NR 40
+ struct rtw89_phy_stat {
+@@ -6741,6 +6752,7 @@ struct rtw89_dev {
+ 		struct rtw89_pmac_stat_info pmac_stat;
+ 		struct rtw89_tx_stat_info tx_stat;
+ 		struct rtw89_diag_bb diag;
++		struct rtw89_phy_path_diff path_diff;
+ 	} bbs[RTW89_PHY_NUM];
+ 
+ 	struct wiphy_delayed_work track_work;
+@@ -7852,6 +7864,15 @@ static inline void rtw89_chip_power_trim(struct rtw89_dev *rtwdev)
+ 		chip->ops->power_trim(rtwdev);
+ }
+ 
++static inline void rtw89_chip_path_diff_update(struct rtw89_dev *rtwdev,
++					       struct rtw89_bb_ctx *bb)
++{
++	const struct rtw89_chip_info *chip = rtwdev->chip;
++
++	if (chip->ops->path_diff_update)
++		chip->ops->path_diff_update(rtwdev, bb);
++}
++
+ static inline void __rtw89_chip_init_txpwr_unit(struct rtw89_dev *rtwdev,
+ 						enum rtw89_phy_idx phy_idx)
+ {
+diff --git a/drivers/net/wireless/realtek/rtw89/phy.c b/drivers/net/wireless/realtek/rtw89/phy.c
+index 759be4dab42b..981c7f02271a 100644
+--- a/drivers/net/wireless/realtek/rtw89/phy.c
++++ b/drivers/net/wireless/realtek/rtw89/phy.c
+@@ -5842,6 +5842,9 @@ static void rtw89_phy_stat_init(struct rtw89_dev *rtwdev)
+ 		memset(&bb->last_pkt_stat, 0, sizeof(bb->last_pkt_stat));
+ 
+ 		ewma_rssi_init(&bb->bcn_rssi);
++		bb->path_diff.raw = 0;
++		ewma_path_diff_init(&bb->path_diff.avg);
++		bb->path_diff.bf_smo_en = false;
+ 	}
+ 
+ 	rtwdev->hal.thermal_prot_lv = 0;
+@@ -6190,6 +6193,8 @@ void rtw89_phy_stat_track(struct rtw89_dev *rtwdev)
+ 	rtw89_for_each_active_bb(rtwdev, bb) {
+ 		bb->last_pkt_stat = bb->cur_pkt_stat;
+ 		memset(&bb->cur_pkt_stat, 0, sizeof(bb->cur_pkt_stat));
++
++		rtw89_chip_path_diff_update(rtwdev, bb);
+ 	}
+ }
+ 
+diff --git a/drivers/net/wireless/realtek/rtw89/reg.h b/drivers/net/wireless/realtek/rtw89/reg.h
+index bf1c6cb0ae9c..1ff788c24eec 100644
+--- a/drivers/net/wireless/realtek/rtw89/reg.h
++++ b/drivers/net/wireless/realtek/rtw89/reg.h
+@@ -10822,6 +10822,13 @@
+ #define B_TXINFO_PATH_MB_BE4 BIT(19)
+ #define R_SHAPER_COEFF_BE4 0x20CBC
+ #define B_SHAPER_COEFF_BE4 BIT(19)
++
++#define R_CL_MODE_CNT_BE4 0x20DE0
++#define B_CL_MODE_NDP_CNT_PHY0_BE4 GENMASK(31, 24)
++#define B_CL_MODE_NDP_CNT_PHY1_BE4 GENMASK(15, 8)
++#define B_CL_MODE_CL_CNT_PHY0_BE4 GENMASK(23, 16)
++#define B_CL_MODE_CL_CNT_PHY1_BE4 GENMASK(7, 0)
++
+ #define R_IFS_T1_AVG_BE4 0x20EDC
+ #define B_IFS_T1_AVG_BE4 GENMASK(15, 0)
+ #define B_IFS_T2_AVG_BE4 GENMASK(31, 16)
+@@ -10940,6 +10947,14 @@
+ #define R_GAIN_BIAS_BE4 0x260A0
+ #define B_GAIN_BIAS_BW20_BE4 GENMASK(11, 6)
+ #define B_GAIN_BIAS_BW40_BE4 GENMASK(17, 12)
++
++#define R_BF_SMO_PDP_LMT_EHT_BE4 0x26568
++#define B_BF_SMO_PDP_LMT_EHT_BE4 BIT(30)
++#define R_BF_SMO_PDP_LMT_HE_BE4 0x26568
++#define B_BF_SMO_PDP_LMT_HE_BE4 BIT(31)
++#define R_BF_SMO_PDP_LMT_VHT_BE4 0x2656C
++#define B_BF_SMO_PDP_LMT_VHT_BE4 BIT(31)
++
+ #define R_AWGN_DET_BE4 0x2668C
+ #define B_AWGN_DET_BE4 GENMASK(17, 9)
+ #define R_CSI_WGT_BE4 0x26770
+@@ -10981,6 +10996,15 @@
+ #define R_BSS_CLR_VLD_BE4 0x26920
+ #define B_BSS_CLR_VLD_BE4 BIT(2)
+ 
++#define R_CL_MODE_TRIG_BE4 0x26F44
++#define B_CL_MODE_TRIG_BE4 BIT(31)
++#define R_SELECTED_TONE_IDX_BE4 0x26F4C
++#define B_SELECTED_TONE_IDX_BE4 GENMASK(11, 0)
++#define R_OS_TRIG_BY_SW_BE4 0x26F50
++#define B_OS_TRIG_BY_SW_BE4 BIT(30)
++#define R_OS_TRIG_SOURCE_BE4 0x26F6C
++#define B_OS_TRIG_SOURCE_BE4 BIT(0)
++
+ #define R_SW_SI_DATA_BE4 0x2CF4C
+ #define B_SW_SI_READ_DATA_BE4 GENMASK(19, 0)
+ #define B_SW_SI_W_BUSY_BE4 BIT(24)
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8851b.c b/drivers/net/wireless/realtek/rtw89/rtw8851b.c
+index a1a63588cb90..95437ba9b675 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8851b.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8851b.c
+@@ -2578,6 +2578,7 @@ static const struct rtw89_chip_ops rtw8851b_chip_ops = {
+ 	.set_txpwr_ul_tb_offset	= rtw8851b_set_txpwr_ul_tb_offset,
+ 	.digital_pwr_comp	= NULL,
+ 	.calc_rx_gain_normal	= NULL,
++	.path_diff_update	= NULL,
+ 	.pwr_on_func		= rtw8851b_pwr_on_func,
+ 	.pwr_off_func		= rtw8851b_pwr_off_func,
+ 	.query_rxdesc		= rtw89_core_query_rxdesc,
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852a.c b/drivers/net/wireless/realtek/rtw89/rtw8852a.c
+index 055c67a07cea..6aa726efb7f6 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852a.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852a.c
+@@ -2325,6 +2325,7 @@ static const struct rtw89_chip_ops rtw8852a_chip_ops = {
+ 	.set_txpwr_ul_tb_offset	= rtw8852a_set_txpwr_ul_tb_offset,
+ 	.digital_pwr_comp	= NULL,
+ 	.calc_rx_gain_normal	= NULL,
++	.path_diff_update	= NULL,
+ 	.pwr_on_func		= NULL,
+ 	.pwr_off_func		= NULL,
+ 	.query_rxdesc		= rtw89_core_query_rxdesc,
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852b.c b/drivers/net/wireless/realtek/rtw89/rtw8852b.c
+index debcdb2eacd6..a8638024b54a 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852b.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852b.c
+@@ -907,6 +907,7 @@ static const struct rtw89_chip_ops rtw8852b_chip_ops = {
+ 	.set_txpwr_ul_tb_offset	= rtw8852bx_set_txpwr_ul_tb_offset,
+ 	.digital_pwr_comp	= NULL,
+ 	.calc_rx_gain_normal	= NULL,
++	.path_diff_update	= NULL,
+ 	.pwr_on_func		= rtw8852b_pwr_on_func,
+ 	.pwr_off_func		= rtw8852b_pwr_off_func,
+ 	.query_rxdesc		= rtw89_core_query_rxdesc,
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852bt.c b/drivers/net/wireless/realtek/rtw89/rtw8852bt.c
+index fc8a17fb95f4..e68f73827fa5 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852bt.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852bt.c
+@@ -753,6 +753,7 @@ static const struct rtw89_chip_ops rtw8852bt_chip_ops = {
+ 	.set_txpwr_ul_tb_offset	= rtw8852bx_set_txpwr_ul_tb_offset,
+ 	.digital_pwr_comp	= NULL,
+ 	.calc_rx_gain_normal	= NULL,
++	.path_diff_update	= NULL,
+ 	.pwr_on_func		= rtw8852bt_pwr_on_func,
+ 	.pwr_off_func		= rtw8852bt_pwr_off_func,
+ 	.query_rxdesc		= rtw89_core_query_rxdesc,
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8852c.c b/drivers/net/wireless/realtek/rtw89/rtw8852c.c
+index 9e630b897986..a82373198356 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8852c.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8852c.c
+@@ -3124,6 +3124,7 @@ static const struct rtw89_chip_ops rtw8852c_chip_ops = {
+ 	.set_txpwr_ul_tb_offset	= rtw8852c_set_txpwr_ul_tb_offset,
+ 	.digital_pwr_comp	= NULL,
+ 	.calc_rx_gain_normal	= NULL,
++	.path_diff_update	= NULL,
+ 	.pwr_on_func		= rtw8852c_pwr_on_func,
+ 	.pwr_off_func		= rtw8852c_pwr_off_func,
+ 	.query_rxdesc		= rtw89_core_query_rxdesc,
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922a.c b/drivers/net/wireless/realtek/rtw89/rtw8922a.c
+index 382034eb27d0..fe87b4929ddc 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922a.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922a.c
+@@ -3109,6 +3109,7 @@ static const struct rtw89_chip_ops rtw8922a_chip_ops = {
+ 	.set_txpwr_ul_tb_offset	= NULL,
+ 	.digital_pwr_comp	= rtw8922a_digital_pwr_comp,
+ 	.calc_rx_gain_normal	= NULL,
++	.path_diff_update	= NULL,
+ 	.pwr_on_func		= rtw8922a_pwr_on_func,
+ 	.pwr_off_func		= rtw8922a_pwr_off_func,
+ 	.query_rxdesc		= rtw89_core_query_rxdesc_v2,
+diff --git a/drivers/net/wireless/realtek/rtw89/rtw8922d.c b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+index 625f8d675f08..805dd96e61e6 100644
+--- a/drivers/net/wireless/realtek/rtw89/rtw8922d.c
++++ b/drivers/net/wireless/realtek/rtw89/rtw8922d.c
+@@ -1716,6 +1716,73 @@ static void rtw8922d_calc_rx_gain_normal(struct rtw89_dev *rtwdev,
+ 	rtw8922d_calc_rx_gain_normal_cck(rtwdev, chan, path, phy_idx, calc);
+ }
+ 
++static void rtw8922d_path_diff_update(struct rtw89_dev *rtwdev,
++				      struct rtw89_bb_ctx *bb)
++{
++#define BF_SMOOTH_TH 80
++	static const u32 path_diff_cnt_mask[] = {0xff0000, 0xff};
++	static const u32 ndp_cnt_mask[] = {0xff000000, 0xff00};
++	static const u16 he_eht_sel_tone[4] = {27, 54, 56, 56};
++	static const u16 vht_sel_tone[4] = {11, 25, 25, 25};
++	struct rtw89_hal *hal = &rtwdev->hal;
++	struct rtw89_entity_conf conf;
++	const struct rtw89_chan *chan;
++	u8 phy_idx = bb->phy_idx;
++	u32 path_diff_cnt;
++	u16 sel_tone = 0;
++	bool bf_smo_lmt;
++	u32 ndp_cnt;
++
++	if (hal->cid != RTL8922D_CID7090)
++		return;
++
++	ndp_cnt = rtw89_phy_read32_mask(rtwdev, R_CL_MODE_CNT_BE4, ndp_cnt_mask[phy_idx]);
++	path_diff_cnt = rtw89_phy_read32_mask(rtwdev, R_CL_MODE_CNT_BE4,
++					      path_diff_cnt_mask[phy_idx]);
++
++	bb->path_diff.raw = clamp(phy_div(path_diff_cnt * 100, ndp_cnt), 0, 255);
++
++	if (ndp_cnt == 0)
++		ewma_path_diff_init(&bb->path_diff.avg);
++	else
++		ewma_path_diff_add(&bb->path_diff.avg, bb->path_diff.raw);
++
++	rtw89_phy_write32_mask(rtwdev, R_CL_MODE_TRIG_BE4, B_CL_MODE_TRIG_BE4, 1);
++	rtw89_phy_write32_mask(rtwdev, R_CL_MODE_TRIG_BE4, B_CL_MODE_TRIG_BE4, 0);
++
++	bf_smo_lmt = ewma_path_diff_read(&bb->path_diff.avg) < BF_SMOOTH_TH;
++	bb->path_diff.bf_smo_en = !bf_smo_lmt;
++
++	rtw89_phy_write32_mask(rtwdev, R_BF_SMO_PDP_LMT_EHT_BE4,
++			       B_BF_SMO_PDP_LMT_EHT_BE4, bf_smo_lmt);
++	rtw89_phy_write32_mask(rtwdev, R_BF_SMO_PDP_LMT_HE_BE4,
++			       B_BF_SMO_PDP_LMT_HE_BE4, bf_smo_lmt);
++	rtw89_phy_write32_mask(rtwdev, R_BF_SMO_PDP_LMT_VHT_BE4,
++			       B_BF_SMO_PDP_LMT_VHT_BE4, bf_smo_lmt);
++
++	rtw89_phy_write32_mask(rtwdev, R_OS_TRIG_BY_SW_BE4,
++			       B_OS_TRIG_BY_SW_BE4, !bf_smo_lmt);
++	rtw89_phy_write32_mask(rtwdev, R_OS_TRIG_SOURCE_BE4,
++			       B_OS_TRIG_SOURCE_BE4, !bf_smo_lmt);
++
++	rtw89_entity_get_conf(rtwdev, &conf);
++	chan = conf.chans[phy_idx];
++	if (chan->band_width <= RTW89_CHANNEL_WIDTH_160) {
++		if (bb->path_diff.link_mode >= 2)
++			sel_tone = he_eht_sel_tone[chan->band_width];
++		else if (bb->path_diff.link_mode == 1)
++			sel_tone = vht_sel_tone[chan->band_width];
++		rtw89_phy_write32_mask(rtwdev, R_SELECTED_TONE_IDX_BE4,
++				       B_SELECTED_TONE_IDX_BE4, sel_tone);
++	}
++
++	rtw89_debug(rtwdev, RTW89_DBG_PHY_TRACK,
++		    "[PATH_DIFF] raw=%d%%, ma=%ld%%, bf_smo_en=%d, tone=%d\n",
++		    bb->path_diff.raw,
++		    ewma_path_diff_read(&bb->path_diff.avg),
++		    bb->path_diff.bf_smo_en, sel_tone);
++}
++
+ static void rtw8922d_set_cck_parameters(struct rtw89_dev *rtwdev,
+ 					const struct rtw89_chan *chan,
+ 					enum rtw89_phy_idx phy_idx)
+@@ -3288,6 +3355,7 @@ static const struct rtw89_chip_ops rtw8922d_chip_ops = {
+ 	.set_txpwr_ul_tb_offset	= NULL,
+ 	.digital_pwr_comp	= rtw8922d_digital_pwr_comp,
+ 	.calc_rx_gain_normal	= rtw8922d_calc_rx_gain_normal,
++	.path_diff_update	= rtw8922d_path_diff_update,
+ 	.pwr_on_func		= rtw8922d_pwr_on_func,
+ 	.pwr_off_func		= rtw8922d_pwr_off_func,
+ 	.query_rxdesc		= rtw89_core_query_rxdesc_v3,
+-- 
+2.55.0
+
