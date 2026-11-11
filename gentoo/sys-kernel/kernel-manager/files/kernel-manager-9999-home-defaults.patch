@@ -1,0 +1,35 @@
+diff --git a/src/jobs.cpp b/src/jobs.cpp
+index 6d34bfb..1c53e56 100644
+--- a/src/jobs.cpp
++++ b/src/jobs.cpp
+@@ -32,7 +32,7 @@ JobsDialog::JobsDialog(EventBus &events, Session &state, QWidget *parent)
+   intro->setWordWrap(true);
+   layout->addWidget(intro);
+   auto *form = new QFormLayout;
+-  workspace = new QLineEdit(QString(KM_SOURCE_DIR) + "/linux-" +
++  workspace = new QLineEdit(QString::fromLocal8Bit(qgetenv("HOME")) + "/linux-" +
+                             session.version + "-workspace");
+   form->addRow("Workspace", workspace);
+   target = new QComboBox;
+diff --git a/src/window.cpp b/src/window.cpp
+index c68a0f0..67970af 100644
+--- a/src/window.cpp
++++ b/src/window.cpp
+@@ -1106,7 +1106,7 @@ void Window::save(bool minimal) {
+                            "kernel source stay unchanged.");
+   intro->setWordWrap(true);
+   layout->addWidget(intro);
+-  auto *path = new QLineEdit(QString(KM_SOURCE_DIR) +
++  auto *path = new QLineEdit(QString::fromLocal8Bit(qgetenv("HOME")) +
+                              (minimal ? "/defconfig" : "/navi.config"));
+   path->setAccessibleName("Export destination");
+   auto *row = new QHBoxLayout;
+@@ -1168,7 +1168,7 @@ void Window::save(bool minimal) {
+   });
+   connect(timer, &QTimer::timeout, dialog, check);
+   connect(browse, &QPushButton::clicked, dialog, [this, dialog, path] {
+-    chooseFiles(bus, dialog, "Choose an export folder", QString(KM_SOURCE_DIR),
++    chooseFiles(bus, dialog, "Choose an export folder", QString::fromLocal8Bit(qgetenv("HOME")),
+                 false, true, [path](const QStringList &files) {
+                   if (!path->isEnabled())
+                     return;
